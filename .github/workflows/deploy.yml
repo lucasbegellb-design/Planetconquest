@@ -1,0 +1,45 @@
+# Tests à chaque push ; déploiement GitHub Pages depuis la branche par défaut uniquement.
+name: Tests et déploiement
+on:
+  push:
+    paths-ignore: ['**.md', 'screenshots/**', 'CLAUDE.md']
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Syntaxe
+        run: for f in $(git ls-files '*.js' '*.mjs'); do node --check "$f"; done
+      - name: Test rapide (cartes, simulation, sauvegarde)
+        run: node tests/smoke.mjs
+  deploy:
+    needs: test
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Préparer le site (seuls les fichiers du jeu)
+        run: |
+          mkdir _site
+          cp -r index.html css js data icons manifest.webmanifest sw.js _site/
+          sed -i "s/__BUILD__/${GITHUB_SHA::8}/" _site/sw.js
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: _site }
+      - id: deployment
+        uses: actions/deploy-pages@v4

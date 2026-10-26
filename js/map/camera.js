@@ -76,14 +76,24 @@ export class Camera {
 
 export function attachInput(el, cam, handlers) {
   const ptrs = new Map();
-  let drag = null, pinch = null;
+  let drag = null, pinch = null, aim = null, lp = null;
   const pos = (e) => { const r = el.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  const cancelLP = () => { if (lp) { clearTimeout(lp); lp = null; } };
+  const startAim = (p) => { cancelLP(); aim = true; if (drag) drag.moved = true; handlers.aimStart(p[0], p[1]); };
   el.addEventListener('pointerdown', (e) => {
     el.setPointerCapture(e.pointerId);
     const p = pos(e);
     ptrs.set(e.pointerId, p);
-    if (ptrs.size === 1) drag = { x: p[0], y: p[1], sx: p[0], sy: p[1], t: performance.now(), moved: false };
-    else if (ptrs.size === 2) {
+    if (ptrs.size === 1) {
+      drag = { x: p[0], y: p[1], sx: p[0], sy: p[1], t: performance.now(), moved: false };
+      // glisser pour attaquer : clic droit, ou appui long sur un de ses territoires
+      if (handlers.canAim && handlers.canAim(p[0], p[1])) {
+        if (e.button === 2) startAim(p);
+        else lp = setTimeout(() => { lp = null; if (drag && !drag.moved && ptrs.size === 1) startAim([drag.x, drag.y]); }, 380);
+      }
+    } else if (ptrs.size === 2) {
+      cancelLP();
+      if (aim) { aim = null; handlers.aimEnd(0, 0, true); }
       const [a, b] = [...ptrs.values()];
       pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), mx: (a[0] + b[0]) / 2, my: (a[1] + b[1]) / 2 };
       if (drag) drag.moved = true;
@@ -93,6 +103,7 @@ export function attachInput(el, cam, handlers) {
     const p = pos(e);
     if (!ptrs.has(e.pointerId)) { handlers.hover && handlers.hover(p[0], p[1]); return; }
     ptrs.set(e.pointerId, p);
+    if (aim) { handlers.aimMove(p[0], p[1]); return; }
     if (ptrs.size >= 2 && pinch) {
       const [a, b] = [...ptrs.values()];
       const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
@@ -102,21 +113,27 @@ export function attachInput(el, cam, handlers) {
       pinch = { d, mx, my };
     } else if (drag) {
       const dx = p[0] - drag.x, dy = p[1] - drag.y;
-      if (!drag.moved && Math.hypot(p[0] - drag.sx, p[1] - drag.sy) > 7) drag.moved = true;
+      if (!drag.moved && Math.hypot(p[0] - drag.sx, p[1] - drag.sy) > 7) { drag.moved = true; cancelLP(); }
       if (drag.moved) cam.pan(dx, dy);
       drag.x = p[0]; drag.y = p[1];
     }
   });
   const end = (e) => {
     if (!ptrs.has(e.pointerId)) return;
+    const p = pos(e);
     ptrs.delete(e.pointerId);
+    cancelLP();
+    if (aim) {
+      if (ptrs.size === 0) { aim = null; drag = null; handlers.aimEnd(p[0], p[1], e.type !== 'pointerup'); }
+      return;
+    }
     if (ptrs.size < 2) pinch = null;
     if (ptrs.size === 0 && drag) {
       if (!drag.moved && performance.now() - drag.t < 600 && e.type === 'pointerup') handlers.tap && handlers.tap(drag.sx, drag.sy);
       drag = null;
     } else if (ptrs.size === 1) {
-      const [p] = [...ptrs.values()];
-      drag = { x: p[0], y: p[1], sx: p[0], sy: p[1], t: 0, moved: true };
+      const [q] = [...ptrs.values()];
+      drag = { x: q[0], y: q[1], sx: q[0], sy: q[1], t: 0, moved: true };
     }
   };
   el.addEventListener('pointerup', end);

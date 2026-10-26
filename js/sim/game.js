@@ -49,6 +49,8 @@ export class Game {
     this.nextEvent = 30;
     this.eraFirsts = [true, false, false, false, false];
     this.landN = []; this.seaN = [];
+    // historique des frontières pour le timelapse : état initial + changements groupés
+    this.hist = { init: null, frames: [], pend: [], next: 0 };
     for (let i = 0; i < n; i++) { this.base[i] = map.cells[i].basePop; this.pop[i] = map.cells[i].basePop; }
     // nom du pays « historique » de chaque territoire (null = terres libres)
     this.coreName = map.cells.map((c) => (c.initOwner >= 0 && map.countries0[c.initOwner] ? map.countries0[c.initOwner].name : null));
@@ -140,6 +142,7 @@ export class Game {
       c.peakCells = c.st.ncells;
     }
     if (P && opts.landing != null) this._expedition(P, opts.meta || {});
+    this.hist.init = Array.from(this.owner);
   }
 
   // Débarquement : colons et force expéditionnaire à la mesure des armées locales
@@ -645,6 +648,7 @@ export class Game {
     }
     A.morale = Math.min(100, A.morale + 0.4);
     if (!D.neutral) D.morale = Math.max(5, D.morale - 0.8);
+    this.hist.pend.push(cell, a);
     this.emit('capture', { cell, from: d, to: a, src, delay });
     if (!D.neutral) {
       if (this.cellsOf[d].size === 0) this.eliminate(d, a);
@@ -792,7 +796,14 @@ export class Game {
     }
     aiTick(this, dt);
     eventsTick(this, dt);
+    if (this.t >= this.hist.next) this.flushHist();
     if (this.proposals.length) this.proposals = this.proposals.filter((p) => p.until > this.t);
+  }
+
+  flushHist() {
+    const h = this.hist;
+    if (h.pend.length) { h.frames.push({ t: Math.round(this.t * 10) / 10, ch: h.pend }); h.pend = []; }
+    h.next = this.t + 2;
   }
 
   // ---------- sauvegarde ----------
@@ -819,6 +830,7 @@ export class Game {
       relations: [...this.relations],
       news: this.news.slice(-60),
       proposals: this.proposals,
+      hist: (this.flushHist(), { init: this.hist.init, frames: this.hist.frames }),
     };
   }
 
@@ -845,6 +857,9 @@ export class Game {
     g.relations = new Map(s.relations);
     g.news = s.news || [];
     g.proposals = s.proposals || [];
+    if (s.hist && s.hist.init) { g.hist.init = s.hist.init; g.hist.frames = s.hist.frames || []; }
+    else g.hist.init = Array.from(g.owner);
+    g.hist.next = g.t + 2;
     g.econ(0.01);
     g.computeBorders();
     return g;

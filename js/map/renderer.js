@@ -5,7 +5,12 @@ import { Camera } from './camera.js';
 import { wrapDx, clamp, rgbToCss, fmtBig, mixRgb } from '../core/util.js';
 import { ERAS } from '../tech/techtree.js';
 
-const MAX_PARTICLES = 450;
+// Niveaux de qualité (ajustés automatiquement selon la fluidité mesurée)
+const QUALITY = [
+  { dpr: 2, particles: 450, smoke: true },
+  { dpr: 1.5, particles: 220, smoke: true },
+  { dpr: 1, particles: 90, smoke: false },
+];
 
 export class Renderer {
   constructor(canvas, map) {
@@ -40,7 +45,8 @@ export class Renderer {
   }
 
   resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.quality ??= 0;
+    const dpr = Math.min(window.devicePixelRatio || 1, QUALITY[this.quality].dpr);
     const w = window.innerWidth, h = window.innerHeight;
     this.dpr = dpr;
     this.canvas.width = Math.round(w * dpr);
@@ -218,12 +224,19 @@ export class Renderer {
   }
 
   // ---------- étiquettes ----------
-  computeLabels() {
-    const g = this.game, cells = this.map.cells, W = this.W;
+  computeLabels() { this._labels(this.game.cellsOf, this.game.countries); }
+  // étiquettes à partir d'un tableau de propriétaires (timelapse)
+  computeLabelsFrom(owner, countries) {
+    const sets = countries.map(() => new Set());
+    for (let i = 0; i < owner.length; i++) sets[owner[i]].add(i);
+    this._labels(sets, countries, true);
+  }
+  _labels(cellsOf, countries, ignoreAlive = false) {
+    const cells = this.map.cells, W = this.W;
     const out = [];
-    for (const c of g.countries) {
-      if (c.neutral || !c.alive) continue;
-      const set = g.cellsOf[c.id];
+    for (const c of countries) {
+      if (c.neutral || (!ignoreAlive && !c.alive)) continue;
+      const set = cellsOf[c.id];
       if (!set.size) continue;
       let cs = 0, sn = 0, sy = 0, tot = 0;
       for (const id of set) {
@@ -271,7 +284,8 @@ export class Renderer {
 
   // ---------- effets ----------
   explosion(x, y, scale = 1) {
-    if (this.particles.length > MAX_PARTICLES) return;
+    const Q = QUALITY[this.quality];
+    if (this.particles.length > Q.particles) return;
     const P = this.particles;
     P.push({ k: 0, x, y, age: 0, life: 0.32, r: 2.2 * scale });
     const n = 3 + Math.floor(Math.random() * 3);
@@ -279,7 +293,7 @@ export class Renderer {
       const a = Math.random() * Math.PI * 2, v = (8 + Math.random() * 16) * scale;
       P.push({ k: 1, x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 4, age: 0, life: 0.35 + Math.random() * 0.35 });
     }
-    if (Math.random() < 0.6) P.push({ k: 2, x: x + (Math.random() - 0.5) * 2, y, vx: (Math.random() - 0.5) * 2, vy: -3 - Math.random() * 3, age: 0, life: 1 + Math.random() * 0.8, r: 1.2 * scale });
+    if (Q.smoke && Math.random() < 0.6) P.push({ k: 2, x: x + (Math.random() - 0.5) * 2, y, vx: (Math.random() - 0.5) * 2, vy: -3 - Math.random() * 3, age: 0, life: 1 + Math.random() * 0.8, r: 1.2 * scale });
   }
   frontPixels(o) {
     const key = o.cur * 4096 + o.a;
@@ -296,8 +310,9 @@ export class Renderer {
   // ---------- boucle de rendu ----------
   render(dt) {
     this.time += dt;
+    this.adaptQuality(dt);
     this.cam.update(dt);
-    if (this.game) {
+    if (this.game && !this.replayMode) {
       this.stepAnims();
       this.spawnBattleFx(dt);
       if (this.game.ownVer !== this.labelVer && this.time - this.labelT > 0.4) {
@@ -320,18 +335,29 @@ export class Renderer {
       ctx.save();
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.translate(ox + k * s, oy);
-      if (this.game) {
+      if (this.game && !this.replayMode) {
         this.drawCapitals(ctx, s);
         this.drawOffensives(ctx, s);
       }
       this.drawParticles(ctx, s, dt);
       if (this.showLabels) this.drawLabels(ctx, s);
       this.drawSelection(ctx, s);
+      this.drawAim(ctx, s);
       ctx.restore();
     }
     // vieillissement des particules (une seule fois par image)
     this.ageFx(dt);
     if (this.rocket) this.stepRocket(dt);
+  }
+
+  // Baisse la résolution / les effets si les images mettent trop de temps, remonte si tout va bien
+  adaptQuality(dt) {
+    if (dt <= 0 || dt >= 0.1) return;
+    this.ema = this.ema ? this.ema * 0.94 + dt * 0.06 : dt;
+    if (this.ema > 0.026) { this.slowT = (this.slowT || 0) + dt; this.fastT = 0; }
+    else if (this.ema < 0.0175) { this.fastT = (this.fastT || 0) + dt; this.slowT = 0; }
+    if (this.slowT > 2.5 && this.quality < 2) { this.quality++; this.slowT = 0; this.resize(); }
+    else if (this.fastT > 20 && this.quality > 0) { this.quality--; this.fastT = 0; this.resize(); }
   }
 
   // ---------- décollage de la fusée ----------
@@ -435,26 +461,66 @@ export class Renderer {
   }
 
   drawParticles(ctx, s, dt) {
-    const z = Math.sqrt(s);
+    const z = Math.sqrt(s), TAU = Math.PI * 2;
+    // un style par type, l'opacité passe par globalAlpha (évite des milliers de chaînes rgba)
+    ctx.fillStyle = '#ffb347';
     for (const p of this.particles) {
+      if (p.k !== 0) continue;
       const t = p.age / p.life;
-      if (p.k === 0) {
-        ctx.fillStyle = `rgba(255,${200 - t * 120},${90 - t * 80},${1 - t})`;
-        ctx.beginPath(); ctx.arc(p.x * s, p.y * s, (p.r * (0.5 + t)) * z * 1.6, 0, Math.PI * 2); ctx.fill();
-      } else if (p.k === 1) {
-        ctx.fillStyle = `rgba(255,${230 - t * 100},120,${1 - t})`;
-        const r = Math.max(0.8, 1.3 * z * (1 - t));
-        ctx.fillRect(p.x * s - r / 2, p.y * s - r / 2, r, r);
-      } else {
-        ctx.fillStyle = `rgba(70,70,74,${0.45 * (1 - t)})`;
-        ctx.beginPath(); ctx.arc(p.x * s, p.y * s, p.r * (1 + t * 2) * z * 1.5, 0, Math.PI * 2); ctx.fill();
-      }
+      ctx.globalAlpha = 1 - t;
+      ctx.beginPath(); ctx.arc(p.x * s, p.y * s, p.r * (0.5 + t) * z * 1.6, 0, TAU); ctx.fill();
     }
+    ctx.fillStyle = '#ffe28a';
+    for (const p of this.particles) {
+      if (p.k !== 1) continue;
+      const t = p.age / p.life;
+      ctx.globalAlpha = 1 - t;
+      const r = Math.max(0.8, 1.3 * z * (1 - t));
+      ctx.fillRect(p.x * s - r / 2, p.y * s - r / 2, r, r);
+    }
+    ctx.fillStyle = '#46464a';
+    for (const p of this.particles) {
+      if (p.k !== 2) continue;
+      const t = p.age / p.life;
+      ctx.globalAlpha = 0.45 * (1 - t);
+      ctx.beginPath(); ctx.arc(p.x * s, p.y * s, p.r * (1 + t * 2) * z * 1.5, 0, TAU); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
     for (const r of this.rings) {
       const t = r.age / r.life;
-      ctx.strokeStyle = rgbToCss(mixRgb(r.color, [255, 255, 255], 0.35), 1 - t);
+      ctx.globalAlpha = 1 - t;
+      ctx.strokeStyle = r.css ||= rgbToCss(mixRgb(r.color, [255, 255, 255], 0.35));
       ctx.lineWidth = Math.max(1, 2.5 * (1 - t) * Math.min(2, z));
-      ctx.beginPath(); ctx.arc(r.x * s, r.y * s, (r.r * (0.4 + t)) * s, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(r.x * s, r.y * s, r.r * (0.4 + t) * s, 0, TAU); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // flèche de visée (glisser pour attaquer)
+  drawAim(ctx, s) {
+    const A = this.aim;
+    if (!A) return;
+    const src = this.map.cells[A.src];
+    const x0 = src.ax * s, y0 = src.ay * s;
+    const x1 = (src.ax + wrapDx(A.x - src.ax, this.W)) * s, y1 = A.y * s;
+    const ok = A.ok;
+    ctx.lineCap = 'round';
+    ctx.setLineDash([10, 7]); ctx.lineDashOffset = -this.time * 40;
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+    ctx.strokeStyle = ok ? '#ffd27a' : 'rgba(255,255,255,0.7)'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = ok ? '#ffd27a' : 'rgba(255,255,255,0.8)';
+    ctx.beginPath(); ctx.arc(x1, y1, 9, 0, Math.PI * 2); ctx.fill();
+    if (A.label) {
+      ctx.font = '700 13px system-ui, sans-serif';
+      const w = ctx.measureText(A.label).width + 16;
+      ctx.fillStyle = 'rgba(8,12,20,0.92)';
+      roundRect(ctx, x1 - w / 2, y1 - 44, w, 24, 12); ctx.fill();
+      ctx.strokeStyle = A.color || '#ffd27a'; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(A.label, x1, y1 - 32);
     }
   }
 
@@ -592,11 +658,19 @@ export class Renderer {
   renderMinimap(mc) {
     const ctx = mc.getContext('2d');
     const w = mc.width, h = mc.height;
-    ctx.imageSmoothingEnabled = true;
-    ctx.fillStyle = '#08101c'; ctx.fillRect(0, 0, w, h);
     const sc = Math.min(w / this.W, h / this.H);
     const mw = this.W * sc, mh = this.H * sc, ox = (w - mw) / 2, oy = (h - mh) / 2;
-    ctx.drawImage(this.off, ox, oy, mw, mh);
+    // image de fond mise en cache, rafraîchie au plus toutes les 1,5 s
+    if (!this.miniBase || this.miniBase.width !== w || this.time - this.miniT > 1.5) {
+      this.miniBase ||= document.createElement('canvas');
+      this.miniBase.width = w; this.miniBase.height = h;
+      const b = this.miniBase.getContext('2d');
+      b.imageSmoothingEnabled = true;
+      b.fillStyle = '#08101c'; b.fillRect(0, 0, w, h);
+      b.drawImage(this.half && !this.halfDirty ? this.half : this.off, ox, oy, mw, mh);
+      this.miniT = this.time;
+    }
+    ctx.drawImage(this.miniBase, 0, 0);
     const cam = this.cam, s = cam.scale;
     const vw = (cam.cw / s) * sc, vh = (cam.ch / s) * sc;
     const vx = ox + (cam.x - cam.cw / 2 / s) * sc, vy = oy + (cam.y - cam.ch / 2 / s) * sc;

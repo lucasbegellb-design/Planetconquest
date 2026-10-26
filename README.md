@@ -4,6 +4,8 @@ Jeu de stratégie en temps réel, jouable dans le navigateur, inspiré des vidé
 
 - **100 % statique** : HTML, CSS et JavaScript (modules ES natifs). Aucune étape de build, aucun backend, aucune dépendance externe : la carte du monde est fournie dans `data/`, le bruit Simplex, le décodeur TopoJSON et le découpage en territoires sont écrits à la main.
 - **Interface en français**, thème sombre, jouable à la souris et au doigt (toucher, glisser, pincer).
+- **Pensé pour le mobile** : application installable (PWA, plein écran, jouable hors ligne), panneau en « bottom sheet », attaque en un geste, vibrations, mode paysage.
+- **Nouveautés v2** : génération de carte en arrière-plan (plus de gel), qualité graphique adaptative, attaque par glisser, gouverneur automatique, « construire partout », timelapse de la conquête avec classement animé, sons synthétisés, classement mondial, déploiement automatique.
 
 ![Conquête de l'Europe avec la France](screenshots/jeu-terre.jpg)
 
@@ -45,6 +47,9 @@ Jeu de stratégie en temps réel, jouable dans le navigateur, inspiré des vidé
 | Action | Souris / clavier | Tactile |
 |---|---|---|
 | Sélectionner | clic | toucher |
+| **Attaquer en un geste** | clic droit glissé de votre territoire vers la cible | appui long sur votre territoire, puis glisser |
+| % de l'armée engagée | bouton ⚔️ (25/50/75/100 %) | bouton ⚔️ |
+| Agrandir / fermer le panneau | — | glisser la poignée vers le haut / le bas |
 | Déplacer la carte | glisser | glisser |
 | Zoomer | molette, double-clic | pincer |
 | Pause / vitesses | `Espace`, `1` `2` `3` | boutons ⏸ x1 x2 x4 |
@@ -52,6 +57,8 @@ Jeu de stratégie en temps réel, jouable dans le navigateur, inspiré des vidé
 | Recentrer sur votre pays | `F` ou clic sur votre nom | toucher votre nom |
 | Afficher/masquer les noms | `L` | menu ☰ |
 | Menu | `Échap` | ☰ |
+
+Le menu ☰ propose aussi le **timelapse** (🎬 l'histoire de la planète rejouée en accéléré avec un classement animé), le **classement mondial**, le son, les vibrations et le plein écran. Dans le panneau de votre pays, le **gouverneur** 🤖 construit automatiquement selon la priorité choisie (or, recherche, armée…) et **« Construire partout »** améliore un bâtiment dans tous vos territoires d'un coup.
 
 La partie est **sauvegardée automatiquement** (localStorage) toutes les 30 secondes et quand vous quittez l'onglet. Le menu ☰ permet d'**exporter** la sauvegarde en fichier `.json`, que l'on peut **importer** depuis l'écran d'accueil (sur un autre appareil, par exemple).
 
@@ -71,14 +78,14 @@ Puis ouvrez <http://localhost:8080>.
 
 ## 🚀 Déployer sur GitHub Pages
 
-Aucun build n'est nécessaire : le jeu est servi tel quel depuis la racine du dépôt.
+Le déploiement est **automatique** grâce à GitHub Actions (`.github/workflows/deploy.yml`) :
 
-1. Poussez le code sur la branche `main` (fusionnez la branche de travail si besoin).
-2. Sur GitHub : **Settings → Pages**.
-3. **Source** : *Deploy from a branch* ; **Branch** : `main`, dossier **`/ (root)`** ; **Save**.
-4. Après une minute, le jeu est en ligne sur `https://lucasbegellb-design.github.io/Planetconquest/`.
+1. Une seule fois : **Settings → Pages → Build and deployment → Source : *GitHub Actions***.
+2. Ensuite, chaque push lance les tests (syntaxe + test rapide de ≈ 2 s) ; si la branche est la **branche par défaut** du dépôt, le jeu est publié sur `https://lucasbegellb-design.github.io/Planetconquest/`.
 
-Le fichier `.nojekyll` désactive le traitement Jekyll (inutile ici). Tous les chemins sont relatifs : le jeu fonctionne aussi bien à la racine d'un domaine que dans un sous-dossier.
+Le workflow est volontairement léger : il ignore les changements de documentation, annule les exécutions obsolètes et ne publie que les fichiers du jeu. Le numéro de version injecté dans `sw.js` force la mise à jour du cache hors ligne à chaque déploiement.
+
+*Sans Actions* : Settings → Pages → *Deploy from a branch* → branche par défaut, dossier `/ (root)` fonctionne aussi (fichier `.nojekyll` inclus).
 
 ---
 
@@ -89,7 +96,7 @@ index.html              page unique (écrans : accueil, chargement, choix, jeu, 
 css/style.css           thème sombre + variantes visuelles par époque (body[data-era])
 data/countries-110m.json  world-atlas 110m (Natural Earth), embarqué
 js/
-  main.js               orchestration : écrans, boucle de jeu, sauvegarde, transitions
+  main.js               orchestration : écrans, boucle de jeu, sauvegarde, gestes, sons
   core/                 rng (graines), noise (Simplex 3D sur cylindre), heap, util, fr (grammaire)
   map/                  génération et rendu
     earthData.js        176 pays : nom FR, article, population, développement, capitale
@@ -101,15 +108,20 @@ js/
     biomes.js, names.js, colors.js, mapCommon.js
     paint.js            peinture pixel du raster (frontières, sélection, terrain)
     renderer.js         rendu canvas : animations de conquête, fronts, étiquettes, mini-carte
-    camera.js           caméra + souris/tactile (tap, glisser, pincer, molette)
+    camera.js           caméra + souris/tactile (tap, glisser, pincer, molette, appui long pour viser)
+    worker.js           génération de carte dans un Web Worker (repli automatique sinon)
   sim/                  simulation pure (sans DOM : testable en Node)
     game.js             état, économie, offensives, captures, diplomatie, sérialisation
     ai.js               décisions des IA (attaque, défense, paix, alliances, redditions)
     events.js           événements aléatoires
     balance.js          constantes d'équilibrage et niveaux de difficulté
+    governor.js         gouverneur automatique et « construire partout »
   tech/                 techtree.js (5 époques + répétables), buildings.js
   space/                progression.js (méta-progression, difficulté infinie), spaceView.js
-  ui/                   menu, HUD, panneau, arbre techno, aide, sauvegarde, utilitaires DOM
+  ui/                   menu, HUD, panneau, arbre techno, timelapse, sons, aide, sauvegarde
+sw.js, manifest.webmanifest, icons/   application installable et hors ligne (PWA)
+.github/workflows/deploy.yml          tests + déploiement GitHub Pages
+CLAUDE.md               guide compact du code pour les agents IA (économise des tokens)
 tests/                  simulations headless (Node) et tests navigateur (Playwright)
 ```
 
@@ -145,12 +157,13 @@ Un joueur humain, moins systématique que le bot, met typiquement 25 à 40 minut
 ## 🧪 Tests
 
 ```bash
+node tests/smoke.mjs                            # test rapide utilisé par la CI (≈ 2 s)
 node tests/genmap.mjs earth                     # génère la Terre + aperçu PNG
 node tests/genmap.mjs proc maGraine ocean       # planète procédurale
 node tests/sim.mjs 30 France bot                # 30 min simulées avec le joueur automatique
 node tests/space-sim.mjs 3                      # planète extraterrestre de niveau 3 (REP=2.5 : technologies infinies)
 # tests navigateur (Playwright + Chromium, serveur local sur :8080)
-node tests/browser.cjs                          # partie Terre, interactions UI, fps
+node tests/browser.cjs                          # partie Terre, UI, glisser-attaquer, gouverneur, timelapse, fps
 node tests/browser.cjs http://localhost:8080/ /tmp mobile
 node tests/browser-space.cjs                    # fusée → système → héritage → atterrissage → reprise
 node tests/browser-perf.cjs                     # performances (fin de partie, planète de 900 territoires)

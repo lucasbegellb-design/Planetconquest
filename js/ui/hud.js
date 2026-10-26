@@ -16,6 +16,20 @@ export class Hud {
     $('#btn-menu').addEventListener('click', () => app.openGameMenu());
     $('#tb-country').addEventListener('click', () => app.selectPlayer());
     this.newsBox.addEventListener('click', () => this.openLog());
+    $('#tb-stats').addEventListener('click', (e) => { if (e.target.closest('[data-open="rank"]')) this.openRanking(); });
+    const fab = $('#aim-pct');
+    fab.addEventListener('click', () => {
+      const P = [25, 50, 75, 100];
+      const v = P[(P.indexOf(app.pct) + 1) % P.length] || 50;
+      app.panel.setPct(v);
+      app.sound.click();
+      if (!this.fabHint) {
+        this.fabHint = true;
+        toast(matchMedia('(hover: hover)').matches
+          ? '⚔️ Part de l’armée engagée. Astuce : <b>clic droit glissé</b> depuis votre territoire vers une cible pour attaquer.'
+          : '⚔️ Part de l’armée engagée. Astuce : <b>appui long</b> sur votre territoire puis <b>glissez</b> vers une cible.', '', 5000);
+      }
+    });
     const mm = $('#minimap');
     let dragging = false;
     const go = (e) => {
@@ -34,6 +48,32 @@ export class Hud {
     $('#toasts').innerHTML = '';
     this.propToasts.clear();
     this.lastStats = '';
+  }
+
+  updateFab() { $('#aim-pct').textContent = `⚔️ ${this.app.pct} %`; }
+
+  rank(g) {
+    const mine = g.cellsOf[g.playerId].size;
+    let r = 1, alive = 0;
+    for (const c of g.countries) {
+      if (c.neutral || !c.alive) continue;
+      alive++;
+      if (c.id !== g.playerId && g.cellsOf[c.id].size > mine) r++;
+    }
+    this.alive = alive;
+    return '#' + r;
+  }
+
+  openRanking() {
+    const g = this.app.game;
+    if (!g) return;
+    const list = g.countries.filter((c) => !c.neutral && c.alive).sort((a, b) => g.cellsOf[b.id].size - g.cellsOf[a.id].size);
+    const rows = list.slice(0, 20).map((c, i) => `<tr class="${c.id === g.playerId ? 'me' : ''}"><td>${i + 1}</td>
+      <td><span class="swatch" style="background:${rgbToCss(c.color)}"></span>${esc(c.name)}</td>
+      <td>${g.cellsOf[c.id].size}</td><td>${fmtPop(c.st.pop)}</td><td>${fmtBig(c.army + g.offTroops(c.id))}</td><td>${ERAS[c.era].name}</td></tr>`).join('');
+    const me = list.findIndex((c) => c.id === g.playerId);
+    openModal(`<h2>🏆 Classement mondial</h2><p class="hint">${list.length} civilisations en vie · vous êtes ${me + 1}<sup>e</sup>.</p>
+      <div class="table-wrap"><table class="rank"><thead><tr><th>#</th><th>Pays</th><th>Terr.</th><th>Pop.</th><th>Armée</th><th>Époque</th></tr></thead><tbody>${rows}</tbody></table></div>`, { narrow: true });
   }
 
   setSpeed(sp) { $$('#speed button').forEach((b) => b.classList.toggle('on', +b.dataset.speed === sp)); }
@@ -55,6 +95,7 @@ export class Hud {
       `<div class="stat" title="Moral">${P.morale > 60 ? '😊' : P.morale > 35 ? '😐' : '😟'} ${Math.round(P.morale)}</div>`,
       `<div class="stat" title="Territoires contrôlés">🗺️ ${n}<small>/ ${g.nCells} (${Math.floor((n / g.nCells) * 100)} %)</small></div>`,
       `<div class="stat" title="Époque">🏛️ ${ERAS[P.era].name}</div>`,
+      `<div class="stat link" data-open="rank" title="Classement mondial">🏆 ${this.rank(g)}<small>/ ${this.alive}</small></div>`,
     ].join('');
     if (html !== this.lastStats) { $('#tb-stats').innerHTML = html; this.lastStats = html; }
     $('#tb-time').textContent = '⏱ ' + fmtTime(g.t);

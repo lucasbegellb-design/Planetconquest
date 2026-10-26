@@ -7,6 +7,12 @@
   <meta name="description" content="Terra Conquest — conquérez la Terre, développez votre civilisation et partez à la conquête des planètes.">
   <title>Terra Conquest</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%232f6b8f'/%3E%3Cpath d='M14 26c8-10 18-6 22 0s14 4 16 12c-6 12-20 14-26 8s-14-8-12-20z' fill='%235f9a4a'/%3E%3C/svg%3E">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Terra Conquest">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body data-era="0">
@@ -112,6 +118,7 @@
     <aside id="panel" class="panel"></aside>
     <div id="news" class="news"></div>
     <canvas id="minimap" width="240" height="94"></canvas>
+    <button id="aim-pct" class="fab" title="Part de l'armée engagée par attaque">⚔️ 50 %</button>
     <div id="toasts" class="toasts"></div>
   </section>
 
@@ -121,6 +128,21 @@
     <div class="space-ui">
       <div id="space-crumbs" class="space-crumbs"></div>
       <div id="space-card" class="card space-card"></div>
+    </div>
+  </section>
+
+  <!-- Timelapse -->
+  <section id="replay" hidden>
+    <div class="rp-top card">
+      <b>🎬 Histoire de <span id="rp-planet"></span></b>
+      <span id="rp-time" class="hint"></span>
+      <button id="rp-close" class="btn small">✕ Fermer</button>
+    </div>
+    <div id="rp-board" class="rp-board"></div>
+    <div class="rp-ctl card">
+      <button id="rp-play" class="btn small">⏸</button>
+      <input id="rp-seek" type="range" min="0" max="1000" value="0">
+      <button id="rp-speed" class="btn small">x40</button>
     </div>
   </section>
 

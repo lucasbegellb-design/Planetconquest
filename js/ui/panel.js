@@ -6,6 +6,10 @@ import { ERAS } from '../tech/techtree.js';
 import { BIOMES } from '../map/biomes.js';
 import { Art, art } from '../core/fr.js';
 import { BAL } from '../sim/balance.js';
+import { GOV_MODES, bulkBuild, bulkCost } from '../sim/governor.js';
+
+const PRESETS = [25, 50, 75, 100];
+const mobile = () => matchMedia('(max-width: 760px), (max-height: 500px)').matches;
 
 export class Panel {
   constructor(app) {
@@ -17,13 +21,53 @@ export class Panel {
     this.el.addEventListener('pointerdown', () => { this.busy = true; });
     window.addEventListener('pointerup', () => { setTimeout(() => { this.busy = false; }, 50); });
     this.el.addEventListener('click', (e) => this.onClick(e));
+    this.bulkB = 'farm';
     this.el.addEventListener('input', (e) => {
-      if (e.target.id === 'atk-pct') { this.pct = +e.target.value; this.updateValues(); }
+      if (e.target.id === 'atk-pct') this.setPct(+e.target.value);
     });
+    this.el.addEventListener('change', (e) => {
+      if (e.target.id === 'gov-mode') this.app.gov.mode = e.target.value;
+      else if (e.target.id === 'bulk-b') { this.bulkB = e.target.value; this.updateValues(); }
+    });
+    this.initSheet();
+  }
+
+  // Sur mobile : panneau en « bottom sheet » — glisser la poignée vers le haut pour agrandir, vers le bas pour fermer
+  initSheet() {
+    let y0 = null, dy = 0;
+    this.el.addEventListener('pointerdown', (e) => {
+      if (!mobile() || !e.target.closest('.p-head')) return;
+      y0 = e.clientY; dy = 0;
+    });
+    window.addEventListener('pointermove', (e) => {
+      if (y0 === null) return;
+      dy = e.clientY - y0;
+      if (dy > 0) this.el.style.transform = `translateY(${dy}px)`;
+    });
+    window.addEventListener('pointerup', () => {
+      if (y0 === null) return;
+      y0 = null;
+      this.el.style.transform = '';
+      if (dy > 70) this.app.select(-1);
+      else if (dy < -30) this.el.classList.add('full');
+      else if (Math.abs(dy) < 6 && this.el.classList.contains('full')) this.el.classList.remove('full');
+      else if (Math.abs(dy) < 6) this.el.classList.add('full');
+    });
+  }
+
+  setPct(v) {
+    this.pct = v;
+    this.app.pct = v;
+    const sl = this.el.querySelector('#atk-pct');
+    if (sl && +sl.value !== v) sl.value = v;
+    this.el.querySelectorAll('[data-act="pct"]').forEach((b) => b.classList.toggle('on', +b.dataset.v === v));
+    this.app.hud.updateFab();
+    this.updateValues();
   }
 
   hide() {
     this.el.classList.add('empty');
+    this.el.classList.remove('full');
     document.body.classList.remove('panel-open');
     this.sig = '';
   }
@@ -71,7 +115,7 @@ export class Panel {
     const foreignActions = mine ? '' : this.buildForeign(g, cell, X, P);
     const blds = BUILDINGS.map((bd, k) => { const l = g.build[cell * NB + k]; return l ? `<span class="tag" title="${esc(bd.name)}">${bd.icon}${bd.max > 1 ? ' ' + l : ''}</span>` : ''; }).join('');
     let h = `
-      <div class="p-head">
+      <div class="p-head"><span class="p-grip"></span>
         <div class="flag" style="background:${rgbToCss(X.color)}"></div>
         <div><h2>${esc(X.name)}</h2><div class="sub">${X.title ? esc(X.title) + ' · ' : ''}${tags.join('')}</div></div>
         <button class="p-close" data-act="close" aria-label="Fermer">✕</button>
@@ -128,6 +172,20 @@ export class Panel {
       </div>
       ${this.offList(g, (o) => o.a === pid || o.d === pid)}
     </div>`;
+    const gov = this.app.gov;
+    const bulkOpts = BUILDINGS.filter((b) => !b.unique && (!b.req || P.techs.has(b.req)));
+    if (!bulkOpts.some((b) => b.id === this.bulkB)) this.bulkB = 'farm';
+    h += `<div class="p-sec"><h4>Gestion de l'empire</h4>
+      <div class="actions">
+        <label class="check"><input type="checkbox" data-act="gov" ${gov.on ? 'checked' : ''}> 🤖 Gouverneur : construit automatiquement</label>
+        <select id="gov-mode">${Object.entries(GOV_MODES).map(([k, m]) => `<option value="${k}" ${k === gov.mode ? 'selected' : ''}>Priorité : ${m.label}</option>`).join('')}</select>
+        <div class="two">
+          <select id="bulk-b">${bulkOpts.map((b) => `<option value="${b.id}" ${b.id === this.bulkB ? 'selected' : ''}>${b.icon} ${esc(b.name)}</option>`).join('')}</select>
+          <button class="btn" data-act="bulk">Construire partout</button>
+        </div>
+        <p class="hint" data-k="bulk-txt"></p>
+      </div>
+    </div>`;
     if (g.conquered || g.countries[pid].era >= 4) h += `<div class="p-sec"><button class="btn primary" style="width:100%" data-act="goals">🚀 Objectifs spatiaux</button></div>`;
     return h;
   }
@@ -143,7 +201,8 @@ export class Panel {
       h += `<p class="hint">${g.canNavigate(P) ? 'Aucune frontière commune avec ce pays.' : 'Aucune frontière terrestre. Recherchez la <b>Navigation</b> pour lancer des attaques navales.'}</p>`;
     } else {
       h += `<div><div class="slider-row"><span>Troupes engagées</span><span data-k="atk-txt"></span></div>
-        <input type="range" id="atk-pct" min="5" max="100" step="5" value="${this.pct}"></div>
+        <input type="range" id="atk-pct" min="5" max="100" step="5" value="${this.pct}">
+        <div class="presets">${PRESETS.map((v) => `<button class="btn small ${v === this.pct ? 'on' : ''}" data-act="pct" data-v="${v}">${v} %</button>`).join('')}</div></div>
         <div class="slider-row"><span>⚖️ Rapport de force estimé</span><b data-k="atk-est"></b></div>
         <button class="btn primary" data-act="attack">⚔️ ${atWar || X.neutral ? 'Attaquer' : 'Déclarer la guerre et attaquer'}</button>
         <p class="hint" data-k="atk-hint"></p>`;
@@ -214,6 +273,10 @@ export class Panel {
     if (X.id !== pid) {
       set('atk-hint', X.neutral ? 'Terres libres : seule une milice locale défend.' : `Armée adverse : ${fmtBig(X.army)} · qualité ×${fmt1(g.defQ(X))} (vous : ×${fmt1(g.atkQ(P))})`);
     }
+    if (this.el.querySelector('[data-k="bulk-txt"]')) {
+      const bc = bulkCost(g, pid, this.bulkB);
+      set('bulk-txt', bc.n ? `${bc.n} territoire${bc.n > 1 ? 's' : ''} améliorable${bc.n > 1 ? 's' : ''} · 💰 ${fmtInt(bc.total)} au total (les plus peuplés d'abord)` : 'Rien à construire pour ce bâtiment.');
+    }
     const mi = g.mercInfo(pid);
     const n = Math.min(mi.room, (P.gold * 0.5) / mi.price);
     set('merc-txt', n >= 100 ? `(+${fmtBig(n)} pour ${fmtInt(n * mi.price)} or)` : mi.room < 100 ? '(effectifs au max)' : '(or insuffisant)');
@@ -254,6 +317,17 @@ export class Panel {
       case 'surrender': r = g.playerDemandSurrender(xid); toast(r.msg, r.ok ? 'ok' : 'err'); break;
       case 'break': g.breakAlliance(pid, xid); break;
       case 'goals': app.openGoals(); return;
+      case 'pct': this.setPct(+btn.dataset.v); app.sound.click(); return;
+      case 'gov':
+        app.gov.on = btn.checked;
+        toast(btn.checked ? '🤖 Gouverneur activé' : 'Gouverneur désactivé', btn.checked ? 'ok' : '', 1500);
+        return;
+      case 'bulk': {
+        const res = bulkBuild(g, pid, this.bulkB);
+        const bd = BUILDINGS[BI[this.bulkB]];
+        toast(res.n ? `🏗️ ${res.n} × ${bd.name} (💰 ${fmtInt(res.spent)})` : 'Or insuffisant ou rien à construire.', res.n ? 'ok' : 'err');
+        break;
+      }
     }
     this.render(true);
   }

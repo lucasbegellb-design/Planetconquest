@@ -83,6 +83,48 @@ const mobile = process.argv.includes('mobile');
   await page.screenshot({ path: `${OUT}/${tag}05-attack.png` });
   await page.waitForTimeout(6000);
   await page.screenshot({ path: `${OUT}/${tag}06-later.png` });
+  // --- glisser pour attaquer : appui long sur un territoire du joueur puis glisser vers un voisin
+  const drag = await page.evaluate(() => {
+    const app = window.app, g = app.game, pid = g.playerId, map = app.map;
+    app.select(-1);
+    for (const cell of g.cellsOf[pid]) for (const nb of map.cells[cell].nbrs) {
+      if (g.owner[nb] !== pid && !g.allied(pid, g.owner[nb])) {
+        const a = map.cells[cell], b = map.cells[nb], cam = app.renderer.cam;
+        cam.x = a.ax; cam.y = a.ay; cam.zoom = cam.maxZoom * 0.35; cam.fly = null; cam.clamp();
+        const from = cam.toScreen(a.ax + 0.5, a.ay + 0.5);
+        return { from, to: cam.toScreen(b.ax + 0.5, b.ay + 0.5), offs: Math.round(g.offTroops(pid)), can: app.canAim(from[0], from[1]) };
+      }
+    }
+    return null;
+  });
+  if (drag) {
+    await page.waitForTimeout(100);
+    await page.mouse.move(drag.from[0], drag.from[1]);
+    await page.mouse.down();
+    await page.waitForTimeout(550);
+    await page.mouse.move(drag.to[0], drag.to[1], { steps: 8 });
+    await page.screenshot({ path: `${OUT}/${tag}08-aim.png` });
+    const aim = await page.evaluate(() => { const A = window.app.renderer.aim; return A ? A.label : null; });
+    console.log('aim label', aim);
+    await page.mouse.up();
+    const after = await page.evaluate(() => Math.round(window.app.game.offTroops(window.app.game.playerId)));
+    console.log('drag-attack canAim', drag.can, 'troops engaged', drag.offs, '->', after, after > drag.offs ? 'OK' : 'KO');
+  }
+  // --- gouverneur + timelapse
+  const gov = await page.evaluate(() => {
+    const { governorTick } = window.app.constructor ? {} : {};
+    const g = window.app.game, P = g.countries[g.playerId];
+    P.gold += 3000; window.app.gov.on = true;
+    return P.gold;
+  });
+  await page.waitForTimeout(2600);
+  const gold2 = await page.evaluate(() => window.app.game.countries[window.app.game.playerId].gold);
+  console.log('governor spent', Math.round(gov - gold2) > 0);
+  await page.evaluate(() => window.app.replay.open());
+  await page.waitForTimeout(2500);
+  await page.screenshot({ path: `${OUT}/${tag}09-replay.png` });
+  await page.click('#rp-close');
+  await page.waitForTimeout(300);
   const fps = await page.evaluate(() => new Promise((res) => {
     let n = 0; const t0 = performance.now();
     const f = () => { n++; if (performance.now() - t0 < 2000) requestAnimationFrame(f); else res(n / 2); };
