@@ -27,15 +27,21 @@ Jeu de stratégie en temps réel, jouable dans le navigateur, inspiré des vidé
 - Touchez un territoire étranger : choisissez le **% de votre armée** à engager, consultez le **rapport de force estimé**, puis **Attaquer**. L'offensive avance territoire par territoire en direction du territoire visé ; chaque conquête laisse une garnison, si bien qu'une offensive finit toujours par s'essouffler.
 - Votre **réserve** défend vos frontières : tout engager au même endroit vous rend vulnérable.
 - Les montagnes, jungles, capitales et territoires historiques (patriotisme) se défendent mieux. Les attaques **navales** demandent la Navigation et subissent un malus (réduit par les ports et certaines technologies).
-- Diplomatie : proposer la paix ou une alliance, exiger une reddition, rompre une alliance. Les IA déclarent des guerres, s'allient, trahissent, font la paix, **capitulent** quand elles sont trop faibles, et forment une **coalition** si vous devenez trop dominant.
+- Diplomatie : proposer la paix, un **pacte de non-agression** (trêve de 5 min) ou une alliance, exiger une reddition, rompre une alliance. L'IA évalue chaque demande sur des critères concrets (relations, rapport de force, durée de la guerre, menaces communes) : un refus impose un **délai** avant de redemander, et insister ne fait que dégrader les relations. Chaque IA a une **personnalité** (pacifique, marchande, expansionniste, belliciste) ; leur agressivité monte progressivement, et un joueur pacifique voit ses relations de voisinage s'améliorer. Les IA déclarent des guerres, s'allient, trahissent, font la paix, **capitulent** quand elles sont trop faibles, et forment une **coalition** si vous devenez trop dominant.
 - **Événements aléatoires** : révoltes (qui peuvent ressusciter un pays disparu), épidémies, ruées vers l'or, découvertes, âges d'or, catastrophes propres à chaque planète.
 - **Victoire planétaire** à 100 % des territoires ; **défaite** si vous perdez votre dernier territoire.
 
 ### Civilisation (phase 3)
 - La population produit de l'**or** 💰, de la **recherche** 🔬 et des **soldats** ⚔️ (avec rendements décroissants : un empire géant reste fragile). Les territoires fraîchement conquis sont agités et moins productifs.
 - **Bâtiments** par territoire : ferme, mine, caserne, université, usine, port, spatioport.
-- **Arbre technologique** : Antiquité → Médiéval → Industriel → Moderne → Spatial (4 technologies d'une époque débloquent la suivante). Chaque époque multiplie l'efficacité des soldats et change le style des unités et de l'interface. Une fois à l'ère spatiale, des **technologies infinies** restent disponibles.
+- **Trois arbres technologiques** — ⚔️ Militaire, 💰 Économie, 👥 Population — sur 5 époques : Antiquité → Médiéval → Industriel → Moderne → Spatial. Une technologie exige une technologie de la même branche à l'époque précédente ; 4 technologies d'une époque (toutes branches confondues) débloquent la suivante. Chaque époque multiplie l'efficacité des soldats et change le style des unités et de l'interface. Une fois à l'ère spatiale, des **technologies infinies** restent disponibles.
 - L'or en excès peut servir à recruter des **mercenaires**.
+
+### 👥 Multijoueur (sans serveur)
+- Accueil → **Multijoueur** → **Créer** : la carte et les réglages de l'accueil sont utilisés, choisissez la durée (10 à 45 min). Partagez le **code** (ou le lien d'invitation) ; jusqu'à 6 joueurs.
+- Mode **chacun pour soi chronométré** : l'IA joue tous les autres pays ; à la fin du chrono, le plus grand empire gagne (classement + timelapse).
+- La partie tourne dans le navigateur de l'**hôte** (qui doit rester ouvert) ; les autres reçoivent l'état en direct via WebRTC. La mise en relation utilise le serveur public gratuit de [PeerJS](https://peerjs.com/) : aucun serveur à héberger. Un joueur déconnecté peut revenir avec le même pseudo (l'IA garde son pays entre-temps).
+- Test local sans réseau : ouvrez deux onglets sur `?net=local` (BroadcastChannel).
 
 ### Conquête spatiale (phase 4)
 - Pour quitter une planète : **100 % des territoires + époque spatiale + Colonisation spatiale + spatioport + fusée** (bouton 🚀 Objectifs).
@@ -115,8 +121,10 @@ js/
     ai.js               décisions des IA (attaque, défense, paix, alliances, redditions)
     events.js           événements aléatoires
     balance.js          constantes d'équilibrage et niveaux de difficulté
-    governor.js         gouverneur automatique et « construire partout »
-  tech/                 techtree.js (5 époques + répétables), buildings.js
+    governor.js         gouverneur automatique, recherche automatique, « construire partout »
+    commands.js         actions d'un joueur (exécutées localement ou par l'hôte en multijoueur)
+  net/                  multijoueur : transport.js (PeerJS / BroadcastChannel), mapsync.js, multiplayer.js
+  tech/                 techtree.js (3 branches × 5 époques + répétables), buildings.js
   space/                progression.js (méta-progression, difficulté infinie), spaceView.js
   ui/                   menu, HUD, panneau, arbre techno, timelapse, sons, aide, sauvegarde
 sw.js, manifest.webmanifest, icons/   application installable et hors ligne (PWA)
@@ -152,6 +160,8 @@ Mesuré avec le joueur automatique (`tests/bot.mjs`), difficulté Normale, temps
 | Planètes de niveau 1 à 3 | conquises en 7 à 32 min |
 | Planètes de niveau 4 à 8 (technologies infinies accumulées) | 10 à 18 min, environ une défaite sur quatre |
 
+Difficultés (Terre, France, joueur automatique de conquête sur 3 graines) : **Facile** 22–29 min, **Normale** 29–35 min, **Difficile** souvent au-delà de 40 min, **Impossible** : l'empire survit mais progresse lentement. Un joueur pacifique (`tests/passive.mjs`) n'est pas attaqué pendant 20 min en Facile/Normale ; en Difficile la première guerre arrive vers 15 min.
+
 Un joueur humain, moins systématique que le bot, met typiquement 25 à 40 minutes pour conquérir la Terre. Toutes les constantes sont regroupées dans `js/sim/balance.js` et `js/space/progression.js`.
 
 ## 🧪 Tests
@@ -161,6 +171,7 @@ node tests/smoke.mjs                            # test rapide utilisé par la CI
 node tests/genmap.mjs earth                     # génère la Terre + aperçu PNG
 node tests/genmap.mjs proc maGraine ocean       # planète procédurale
 node tests/sim.mjs 30 France bot                # 30 min simulées avec le joueur automatique
+node tests/passive.mjs normal 20 France          # joueur pacifique : quand subit-il sa première guerre ?
 node tests/space-sim.mjs 3                      # planète extraterrestre de niveau 3 (REP=2.5 : technologies infinies)
 # tests navigateur (Playwright + Chromium, serveur local sur :8080)
 node tests/browser.cjs                          # partie Terre, UI, glisser-attaquer, gouverneur, timelapse, fps

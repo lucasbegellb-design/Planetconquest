@@ -1,6 +1,7 @@
 // Gestion automatique de l'empire : construction selon une priorité, et « construire partout ».
 import { BUILDINGS, BI, NB } from '../tech/buildings.js';
 import { BAL } from './balance.js';
+import { TECHS, REPEATABLES, canResearch, repeatCost } from '../tech/techtree.js';
 
 export const GOV_MODES = {
   equilibre: { label: 'Équilibré', w: { farm: 1, mine: 1.2, university: 1.1, factory: 1.2, barracks: 0.6, port: 0.5 } },
@@ -65,4 +66,15 @@ export function bulkCost(g, id, bid) {
     if (r.cost !== undefined) { total += r.cost; n++; }
   }
   return { total, n };
+}
+
+// Recherche automatique : la technologie disponible la moins chère, puis les répétables
+export function autoResearchTick(g, id) {
+  const P = g.countries[id];
+  const avail = TECHS.filter((t) => canResearch(P.techs, P.era, t)).sort((a, b) => a.cost - b.cost);
+  if (avail.length) { if (P.rp >= avail[0].cost) g.research(id, avail[0].id); return; }
+  if (P.era >= 4) {
+    const r = [...REPEATABLES].sort((a, b) => repeatCost(a, P.repeat[a.id] || 0) - repeatCost(b, P.repeat[b.id] || 0))[0];
+    if (P.rp >= repeatCost(r, P.repeat[r.id] || 0)) g.researchRepeat(id, r.id);
+  }
 }

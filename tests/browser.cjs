@@ -112,9 +112,8 @@ const mobile = process.argv.includes('mobile');
   }
   // --- gouverneur + timelapse
   const gov = await page.evaluate(() => {
-    const { governorTick } = window.app.constructor ? {} : {};
     const g = window.app.game, P = g.countries[g.playerId];
-    P.gold += 3000; window.app.gov.on = true;
+    P.gold += 3000; window.app.setAuto({ gov: true });
     return P.gold;
   });
   await page.waitForTimeout(2600);

@@ -71,5 +71,5 @@ export function initMenu(h) {
     e.target.value = '';
     if (f) h.onImport(await f.text());
   });
-  return { setContinue: (on) => { $('#btn-continue').hidden = !on; } };
+  return { setContinue: (on) => { $('#btn-continue').hidden = !on; }, settings };
 }

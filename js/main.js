@@ -4,7 +4,7 @@ import { initMenu } from './ui/menu.js';
 import { HELP_HTML } from './ui/help.js';
 import { Hud } from './ui/hud.js';
 import { Panel } from './ui/panel.js';
-import { openTechView, autoResearch } from './ui/techView.js';
+import { openTechView } from './ui/techView.js';
 import { hasSave, readSave, writeSave, exportFile, validateSave } from './ui/save.js';
 import { generateEarth } from './map/earth.js';
 import { generatePlanet } from './map/procedural.js';
@@ -23,7 +23,9 @@ import { newMeta, recordConquest, planetSpec, planetInfo, PERKS } from './space/
 import { SpaceView } from './space/spaceView.js';
 import { Sound } from './ui/sound.js';
 import { Replay } from './ui/replay.js';
-import { governorTick } from './sim/governor.js';
+import { Multi } from './net/multiplayer.js';
+import { mapHash } from './net/mapsync.js';
+import { runCommand } from './sim/commands.js';
 
 class App {
   constructor() {
@@ -35,11 +37,9 @@ class App {
     this.topology = null;
     this.speed = 1;
     this.sel = { cell: -1 };
-    this.autoResearch = false;
     this.meta = null;
     this.setup = null;
-    this.timers = { hud: 0, panel: 0, mini: 0, save: 0, auto: 0, gov: 0, boom: 0 };
-    this.gov = { on: false, mode: 'equilibre' };
+    this.timers = { hud: 0, panel: 0, mini: 0, save: 0, boom: 0 };
     this.pct = 50;
     this.sound = new Sound();
     const unlock = () => this.sound.unlock();
@@ -57,6 +57,11 @@ class App {
     this.panel = new Panel(this);
     this.space = new SpaceView(this);
     this.replay = new Replay(this);
+    this.multi = new Multi(this);
+    $('#btn-multi').addEventListener('click', () => this.mpOpen());
+    $('#btn-emote').addEventListener('click', () => this.multi.openEmotes());
+    const jp = new URLSearchParams(location.search).get('join');
+    if (jp) setTimeout(() => this.mpOpen(jp), 50);
     this.registerPWA();
     this.bindInput();
     window.addEventListener('resize', () => { if (this.renderer) this.renderer.resize(); this.space.resize(); });
@@ -247,13 +252,16 @@ class App {
   }
 
   // ---------- nouvelle partie ----------
+  specFor(s, humans) {
+    if (s.mode === 'earth') return { kind: 'earth' };
+    return { kind: 'proc', seed: s.seed, type: s.type, nCountries: s.nAI + humans, targetCells: 440, name: planetName(new RNG('nom-' + s.seed), s.type) };
+  }
+
   async newGame(s) {
     this.settings = s;
     this.meta = null;
     this.speed = s.speed;
-    let spec;
-    if (s.mode === 'earth') spec = { kind: 'earth' };
-    else spec = { kind: 'proc', seed: s.seed, type: s.type, nCountries: s.nAI + 1, targetCells: 440, name: planetName(new RNG('nom-' + s.seed), s.type) };
+    const spec = this.specFor(s, 1);
     this.setup = { spec, settings: s, planetKey: 'home' };
     $('#menu').hidden = true;
     let map;
@@ -329,7 +337,13 @@ class App {
         <div><span>Voisins</span><b>${c.neighbors ? c.neighbors.size : 0}</b></div>
       </div>
       <button class="btn primary big" id="pick-go">Jouer avec ${esc(art(c))}</button>`;
-    $('#pick-go').onclick = () => this.startHome(k);
+    if (this.multi.active) {
+      const taken = this.multi.takenBy(k);
+      const go = $('#pick-go');
+      go.textContent = taken ? `Déjà pris par ${taken.name}` : `Choisir ${art(c)}`;
+      go.disabled = !!taken;
+      go.onclick = () => { this.multi.pick(k); toast(`Vous jouerez ${esc(art(c))}.`, 'ok', 1500); };
+    } else $('#pick-go').onclick = () => this.startHome(k);
   }
 
   startHome(k) {
@@ -373,6 +387,12 @@ class App {
     game.on('era', (e) => { if (e.id === game.playerId) this.onPlayerEra(e.era); });
     game.on('conquered', () => this.onConquered());
     game.on('defeat', () => this.onDefeat());
+    game.on('matchEnd', (e) => this.onMatchEnd(e.ranking));
+    const mp = this.multi.active;
+    document.body.classList.toggle('mp', mp);
+    document.body.classList.toggle('mp-client', this.multi.isClient);
+    $('#btn-emote').hidden = !mp;
+    $('#btn-goals').hidden = mp;
     game.on('rocketReady', () => toast('🚀 La fusée est prête ! Ouvrez les objectifs pour la lancer.', 'ok', 6000));
     game.on('launch', () => this.onLaunch());
     const pid = game.playerId, snd = this.sound;
@@ -436,9 +456,25 @@ class App {
     this.panel.render(true);
   }
 
+  // toutes les actions du joueur passent par ici (solo, hôte ou joueur distant)
+  cmd(name, ...args) {
+    if (this.multi.isClient) return this.multi.cmd(name, args);
+    return runCommand(this.game, this.game.playerId, name, args);
+  }
+  get auto() {
+    const g = this.game, P = g && g.countries[g.playerId];
+    return (P && P.auto) || { gov: false, mode: 'equilibre', res: false };
+  }
+  setAuto(patch) {
+    const a = { ...this.auto, ...patch };
+    this.game.countries[this.game.playerId].auto = a;
+    this.cmd('auto', a.gov, a.mode, a.res);
+  }
+
   attack(xid, frac, cell) {
     const g = this.game;
-    const r = g.launch(g.playerId, xid, frac, cell);
+    const r = this.cmd('launch', xid, frac, cell);
+    if (r.pending) { this.sound.boom(1); this.sound.buzz(35); return; }
     if (!r.ok) { toast(r.msg, 'err'); return; }
     const D = g.countries[xid];
     toast(r.merged ? `⚔️ Renforts envoyés contre ${esc(art(D))}.` : `⚔️ Offensive lancée contre ${esc(art(D))} !`, 'ok', 1800);
@@ -486,9 +522,9 @@ class App {
         ${this.meta ? `<p class="hint center">Planètes conquises : ${this.meta.level} · Galaxie : ${esc(this.meta.galaxy + 1 + '')}</p>` : ''}`;
       const root = openModal(body, { narrow: true });
       const b = root.querySelector('#rk-build');
-      if (b) b.onclick = () => { const r = g.startRocket(); if (!r.ok) toast(r.msg, 'err'); render(); };
+      if (b) b.onclick = () => { const r = this.cmd('startRocket'); if (!r.ok) toast(r.msg, 'err'); render(); };
       const l = root.querySelector('#rk-launch');
-      if (l) l.onclick = () => { closeModal(); g.launchRocket(); };
+      if (l) l.onclick = () => { closeModal(); this.cmd('launchRocket'); };
     };
     render();
   }
@@ -554,6 +590,13 @@ class App {
 
   onDefeat() {
     const g = this.game;
+    if (this.multi.active) {
+      openModal(`<div class="center"><div class="big-emoji">💀</div><h2>Vous avez été éliminé</h2>
+        <p>La partie continue : vous pouvez la suivre en spectateur jusqu'à la fin.</p>
+        <div class="btn-row"><button class="btn primary" onclick="document.getElementById('modal-close').click()">👀 Regarder</button><button class="btn" id="df-quit">🏠 Quitter</button></div></div>`, { narrow: true });
+      $('#df-quit').onclick = () => { closeModal(); this.toMenu(); };
+      return;
+    }
     this.setSpeed(0);
     const retry = this.meta && this.setup.planetKey !== 'home';
     openModal(`<div class="center"><div class="big-emoji">💀</div><h2>Défaite</h2>
@@ -654,7 +697,8 @@ class App {
 
   // ---------- sauvegarde ----------
   makeSave() {
-    const base = { v: 1, savedAt: Date.now(), setup: this.setup, meta: this.meta, prefs: { gov: this.gov, pct: this.pct, autoResearch: this.autoResearch } };
+    if (this.multi.active) return null; // pas de sauvegarde en multijoueur
+    const base = { v: 1, savedAt: Date.now(), setup: this.setup, meta: this.meta, prefs: { pct: this.pct } };
     if (this.mode === 'play' && this.game) {
       const cam = this.renderer.cam;
       return { ...base, phase: 'play', game: this.game.serialize(), view: { x: cam.x, y: cam.y, zoom: cam.zoom } };
@@ -685,7 +729,7 @@ class App {
     this.setup = data.setup;
     this.settings = data.setup.settings;
     this.meta = data.meta || null;
-    if (data.prefs) { this.gov = { ...this.gov, ...data.prefs.gov }; this.pct = data.prefs.pct || 50; this.autoResearch = !!data.prefs.autoResearch; }
+    if (data.prefs) this.pct = data.prefs.pct || 50;
     $('#menu').hidden = true;
     if (data.phase === 'space') { this.mode = 'space'; this.space.show(this.meta); return; }
     let map;
@@ -703,6 +747,9 @@ class App {
   }
 
   toMenu() {
+    if (this.multi.active) this.multi.leave();
+    document.body.classList.remove('mp', 'mp-client');
+    $('#lobby-card').hidden = true;
     this.mode = 'menu';
     this.game = null;
     this.renderer = null;
@@ -718,24 +765,144 @@ class App {
     this.menu.setContinue(hasSave());
   }
 
+  // ---------- multijoueur ----------
+  mpOpen(code = '') {
+    let name = '';
+    try { name = localStorage.getItem('terra-conquest-name') || ''; } catch { /* ignore */ }
+    const root = openModal(`<h2>👥 Multijoueur</h2>
+      <p class="hint">Chacun pour soi, partie chronométrée : le plus grand empire à la fin l'emporte. L'IA joue tous les autres pays.
+      La partie tourne chez l'hôte, qui doit garder le jeu ouvert. Jusqu'à 6 joueurs.</p>
+      <div class="form">
+        <div class="row"><label>Votre pseudo</label><input type="text" id="mp-name" maxlength="18" value="${esc(name)}" placeholder="Pseudo"></div>
+      </div>
+      <h3>🌐 Créer une partie</h3>
+      <p class="hint">La carte et les réglages de l'accueil sont utilisés (Terre ou monde procédural, difficulté, nombre de pays).</p>
+      <div class="row two"><div><label>Durée</label><select id="mp-dur"><option value="10">10 min</option><option value="15">15 min</option><option value="20" selected>20 min</option><option value="30">30 min</option><option value="45">45 min</option></select></div>
+        <div><label>&nbsp;</label><button class="btn primary" id="mp-create" style="width:100%">Créer</button></div></div>
+      <h3>🔑 Rejoindre une partie</h3>
+      <div class="inline"><input type="text" id="mp-code" maxlength="5" placeholder="CODE" value="${esc(code)}" style="text-transform:uppercase;letter-spacing:3px;font-weight:700">
+        <button class="btn primary" id="mp-join">Rejoindre</button></div>`, { narrow: true });
+    const getName = () => {
+      const n = root.querySelector('#mp-name').value.trim().slice(0, 18) || 'Joueur';
+      try { localStorage.setItem('terra-conquest-name', n); } catch { /* ignore */ }
+      return n;
+    };
+    const net = new URLSearchParams(location.search).get('net') === 'local' ? 'local' : 'peer';
+    root.querySelector('#mp-create').onclick = async () => {
+      const settings = { ...this.menu.settings(), duration: +root.querySelector('#mp-dur').value * 60, net }, name = getName();
+      closeModal();
+      try { await this.mpCreate(settings, name); } catch (err) { console.error(err); toast('🌐 ' + esc(err.message), 'err', 5000); this.toMenu(); }
+    };
+    root.querySelector('#mp-join').onclick = async () => {
+      const c = root.querySelector('#mp-code').value.trim().toUpperCase();
+      if (c.length < 4) { toast('Entrez le code de la partie.', 'err'); return; }
+      const name = getName();
+      closeModal();
+      $('#menu').hidden = true;
+      toast('🌐 Connexion…', '', 2000);
+      try { await this.multi.join(c, name, net); } catch (err) { console.error(err); toast('🌐 ' + esc(err.message), 'err', 5000); this.toMenu(); }
+    };
+  }
+
+  async mpCreate(settings, name) {
+    const code = await this.multi.create(settings, name);
+    this.speed = settings.speed;
+    await this.mpEnterLobby(settings);
+    this.multi.hash = mapHash(this.map);
+    this.multi.broadcastLobby();
+    toast(`🌐 Partie créée : code <b>${code}</b>. Invitez vos amis !`, 'ok', 5000);
+  }
+
+  async mpEnterLobby(settings) {
+    this.settings = settings;
+    this.meta = null;
+    const spec = this.specFor(settings, 6);
+    this.setup = { spec, settings, planetKey: 'home' };
+    $('#menu').hidden = true;
+    this.mapBuilding = true;
+    const map = await this.buildMap(spec);
+    this.mapBuilding = false;
+    this.enterPick(map);
+    $('.pick-banner b').textContent = 'Choisissez votre pays';
+    $('#pick-random').hidden = true;
+    $('#pick-back').onclick = () => this.mpQuit();
+    if (this.multi.isClient) {
+      this.multi.sendMapHash(map);
+      if (this.multi.lobby) this.multi.renderLobby(this.multi.lobby);
+      if (this.multi.pendingStart) { const d = this.multi.pendingStart; this.multi.pendingStart = null; this.mpStartClient(d.snap, d.assign, d.settings); }
+    }
+  }
+
+  mpMapReplaced() {
+    this.enterPick(this.map);
+    $('#pick-random').hidden = true;
+    $('#pick-back').onclick = () => this.mpQuit();
+    if (this.multi.lobby) this.multi.renderLobby(this.multi.lobby);
+  }
+
+  mpStartHost() {
+    const m = this.multi, s = this.settings;
+    const ps = [...m.players.values()];
+    const hostK = m.players.get('host').k;
+    const game = Game.create(this.map, {
+      difficulty: s.difficulty, playerIndex: hostK, humans: ps.filter((p) => p.id !== 'host').map((p) => p.k),
+      nAI: s.nAI ? s.nAI + ps.length : 0, planet: this.homePlanet(this.setup.spec), match: { duration: s.duration },
+    });
+    $('#pick').hidden = true; $('#lobby-card').hidden = true;
+    this.speed = s.speed;
+    this.beginPlay(game, true);
+    m.startHost(game);
+    game.say(`🌐 La partie commence : ${Math.round(s.duration / 60)} minutes pour bâtir le plus grand empire !`, 'info', { imp: true });
+  }
+
+  mpStartClient(snap, assign, settings) {
+    if (!this.map || this.mapBuilding) { this.multi.pendingStart = { snap, assign, settings }; if (!this.map && !this.mapBuilding) this.mpEnterLobby(settings); return; }
+    if (!this.renderer) this.makeRenderer(this.map);
+    const game = Game.restore(this.map, { difficulty: settings.difficulty, planet: this.homePlanet(this.setup.spec) }, snap);
+    game.playerId = assign;
+    game.countries[assign].isPlayer = true;
+    this.multi.game = game;
+    $('#pick').hidden = true; $('#lobby-card').hidden = true;
+    this.speed = settings.speed;
+    this.beginPlay(game, true);
+  }
+
+  hostSpeed(sp) {
+    if (sp !== this.speed) { this.speed = sp; this.hud.setSpeed(sp); }
+  }
+  mpHostLost() {
+    openModal(`<div class="center"><div class="big-emoji">🔌</div><h2>L'hôte a quitté la partie</h2>
+      <p>La partie est terminée.</p><div class="btn-row"><button class="btn primary" id="hl-menu">🏠 Accueil</button></div></div>`, { narrow: true, closable: false });
+    $('#hl-menu').onclick = () => { closeModal(); this.toMenu(); };
+  }
+  mpQuit() { this.toMenu(); }
+
+  onMatchEnd(ranking) {
+    this.sound.fanfare();
+    const html = this.multi.showResults(ranking, this.game.playerId);
+    openModal(html + `<div class="btn-row"><button class="btn primary" id="me-replay">🎬 Revoir la partie</button><button class="btn" id="me-menu">🏠 Accueil</button></div>`, { narrow: true, closable: false });
+    $('#me-replay').onclick = () => { closeModal(); this.replay.open(() => this.onMatchEnd(ranking)); };
+    $('#me-menu').onclick = () => { closeModal(); this.toMenu(); };
+  }
+
   // ---------- boucle ----------
   loop(ts) {
     const dt = Math.min(0.1, (ts - this.last) / 1000);
     this.last = ts;
     try {
-      const paused = modalOpen() || document.hidden;
-      if (this.mode === 'play' && this.game && !this.game.over && this.speed > 0 && !paused) this.game.advance(dt * this.speed);
+      const mp = this.multi.active;
+      const paused = !mp && (modalOpen() || document.hidden);
+      if (this.mode === 'play' && this.game && !this.game.over && this.speed > 0 && !paused && !this.multi.isClient) this.game.advance(dt * this.speed);
+      if (mp && this.multi.isHost && this.game) this.multi.hostTick(dt);
       if (this.renderer && this.mode !== 'space' && this.mode !== 'menu') this.renderer.render(dt);
       if (this.mode === 'replay') this.replay.step(dt);
       if (this.mode === 'space') this.space.render(dt);
       if (this.mode === 'play' && this.game) {
         const T = this.timers;
-        T.hud += dt; T.panel += dt; T.mini += dt; T.save += dt; T.auto += dt; T.gov += dt;
+        T.hud += dt; T.panel += dt; T.mini += dt; T.save += dt;
         if (T.hud > 0.25) { T.hud = 0; this.hud.update(); }
         if (T.panel > 0.5) { T.panel = 0; if (this.sel.cell >= 0) this.panel.render(); }
         if (T.mini > 0.3) { T.mini = 0; this.renderer.renderMinimap($('#minimap')); }
-        if (T.auto > 1) { T.auto = 0; if (this.autoResearch && this.speed > 0) autoResearch(this.game); }
-        if (T.gov > 2) { T.gov = 0; if (this.gov.on && this.speed > 0 && !paused) governorTick(this.game, this.game.playerId, this.gov.mode, 2); }
         // ambiance sonore des combats du joueur
         if (this.speed > 0 && !paused && (T.boom -= dt) < 0) {
           const g = this.game, pid = g.playerId;

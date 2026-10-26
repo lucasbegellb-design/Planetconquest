@@ -6,7 +6,9 @@ import { ERAS } from '../tech/techtree.js';
 import { BIOMES } from '../map/biomes.js';
 import { Art, art } from '../core/fr.js';
 import { BAL } from '../sim/balance.js';
-import { GOV_MODES, bulkBuild, bulkCost } from '../sim/governor.js';
+import { GOV_MODES, bulkCost } from '../sim/governor.js';
+import { AI_STYLES } from '../sim/balance.js';
+import { pairKey } from '../sim/game.js';
 
 const PRESETS = [25, 50, 75, 100];
 const mobile = () => matchMedia('(max-width: 760px), (max-height: 500px)').matches;
@@ -26,7 +28,7 @@ export class Panel {
       if (e.target.id === 'atk-pct') this.setPct(+e.target.value);
     });
     this.el.addEventListener('change', (e) => {
-      if (e.target.id === 'gov-mode') this.app.gov.mode = e.target.value;
+      if (e.target.id === 'gov-mode') this.app.setAuto({ mode: e.target.value });
       else if (e.target.id === 'bulk-b') { this.bulkB = e.target.value; this.updateValues(); }
     });
     this.initSheet();
@@ -86,6 +88,8 @@ export class Panel {
     let extra = '';
     if (mine) extra = BUILDINGS.map((bd) => (g.canBuild(pid, cell, bd.id).ok ? 1 : 0)).join('');
     else extra = g.canReach(pid, xid) ? 'R' : 'r';
+    if (!mine && !X.neutral) extra += ['peace', 'alliance', 'nap', 'surrender'].map((t) => (g.coolLeft(pid, xid, t) ? 1 : 0)).join('') + (Math.round(g.rel(pid, xid) / 10));
+    if (mine) extra += this.app.auto.gov ? 'G' : 'g';
     const offs = g.offensives.filter((o) => (o.a === pid && (mine || o.d === xid)) || (o.d === pid && (mine || o.a === xid))).map((o) => o.id).join(',');
     const sig = [cell, xid, flags, b.join(''), P.techs.size, extra, offs, g.over || ''].join('|');
     this.el.classList.remove('empty');
@@ -172,7 +176,7 @@ export class Panel {
       </div>
       ${this.offList(g, (o) => o.a === pid || o.d === pid)}
     </div>`;
-    const gov = this.app.gov;
+    const gov = { on: this.app.auto.gov, mode: this.app.auto.mode };
     const bulkOpts = BUILDINGS.filter((b) => !b.unique && (!b.req || P.techs.has(b.req)));
     if (!bulkOpts.some((b) => b.id === this.bulkB)) this.bulkB = 'farm';
     h += `<div class="p-sec"><h4>Gestion de l'empire</h4>
@@ -208,13 +212,22 @@ export class Panel {
         <p class="hint" data-k="atk-hint"></p>`;
     }
     if (!X.neutral && X.alive) {
-      h += `<div class="two">`;
+      const rel = Math.round(g.rel(pid, xid));
+      const word = rel <= -40 ? 'hostiles' : rel < -10 ? 'méfiantes' : rel < 10 ? 'neutres' : rel < 40 ? 'cordiales' : 'amicales';
+      const style = X.isPlayer ? 'joueur humain' : (AI_STYLES.find((s) => s.id === X.ai.style) || {}).label || '';
+      const tl = truce ? g.truces.get(pairKey(pid, xid)) - g.t : 0;
+      h += `<p class="hint">🤝 Relations ${word} (${rel > 0 ? '+' : ''}${rel}) · ${esc(style)}${tl > 0 ? ` · 📜 trêve/pacte encore ${Math.ceil(tl)} s` : ''}</p><div class="two">`;
+      const btn = (type, act, label, cls = '') => {
+        const left = g.coolLeft(pid, xid, type);
+        return `<button class="btn ${cls}" data-act="${act}" ${left ? 'disabled' : ''}>${label}${left ? ` <small>(${left} s)</small>` : ''}</button>`;
+      };
       if (atWar) {
-        h += `<button class="btn" data-act="peace">🕊️ Proposer la paix</button><button class="btn" data-act="surrender">🏳️ Exiger la reddition</button>`;
+        h += btn('peace', 'peace', '🕊️ Proposer la paix') + btn('surrender', 'surrender', '🏳️ Exiger la reddition');
       } else if (allied) {
         h += `<button class="btn danger" data-act="break">💔 Rompre l'alliance</button>`;
       } else {
-        h += `<button class="btn" data-act="alliance">🤝 Proposer une alliance</button>`;
+        h += btn('alliance', 'alliance', '🤝 Proposer une alliance');
+        if (!truce) h += btn('nap', 'nap', '📜 Pacte de non-agression');
       }
       h += `</div>`;
     }
@@ -298,34 +311,37 @@ export class Panel {
     switch (btn.dataset.act) {
       case 'close': app.select(-1); return;
       case 'build': {
-        r = g.buildIn(pid, cell, btn.dataset.b);
+        r = app.cmd('build', cell, btn.dataset.b);
         const bd = BUILDINGS[BI[btn.dataset.b]];
+        if (r.pending) break;
         if (r.ok) toast(`🏗️ ${bd.name} construit${bd.fem ? 'e' : ''} !`, 'ok', 1600);
         else toast(r.msg, 'err');
         break;
       }
       case 'merc': {
         const mi = g.mercInfo(pid);
-        r = g.hireMercenaries(pid, Math.min(g.countries[pid].gold * 0.5, mi.room * mi.price));
+        r = app.cmd('merc', Math.min(g.countries[pid].gold * 0.5, mi.room * mi.price));
+        if (r.pending) break;
         if (r.ok) toast(`🪙 ${fmtBig(r.n)} mercenaires rejoignent vos rangs.`, 'ok'); else toast(r.msg, 'err');
         break;
       }
       case 'attack': app.attack(xid, this.pct / 100, cell); break;
-      case 'recall': g.recall(+btn.dataset.o); toast('Troupes rappelées (10 % de pertes en retraite).', '', 2000); break;
-      case 'peace': r = g.playerProposePeace(xid); toast(r.msg, r.ok ? 'ok' : 'err'); break;
-      case 'alliance': r = g.playerProposeAlliance(xid); toast(r.msg, r.ok ? 'ok' : 'err'); break;
-      case 'surrender': r = g.playerDemandSurrender(xid); toast(r.msg, r.ok ? 'ok' : 'err'); break;
-      case 'break': g.breakAlliance(pid, xid); break;
+      case 'recall': app.cmd('recall', +btn.dataset.o); toast('Troupes rappelées (10 % de pertes en retraite).', '', 2000); break;
+      case 'peace': case 'alliance': case 'nap': case 'surrender':
+        r = app.cmd(btn.dataset.act, xid);
+        if (!r.pending) toast(esc(r.msg), r.ok ? 'ok' : 'err', 3500);
+        break;
+      case 'break': app.cmd('breakAlliance', xid); break;
       case 'goals': app.openGoals(); return;
       case 'pct': this.setPct(+btn.dataset.v); app.sound.click(); return;
       case 'gov':
-        app.gov.on = btn.checked;
+        app.setAuto({ gov: btn.checked });
         toast(btn.checked ? '🤖 Gouverneur activé' : 'Gouverneur désactivé', btn.checked ? 'ok' : '', 1500);
         return;
       case 'bulk': {
-        const res = bulkBuild(g, pid, this.bulkB);
+        const res = app.cmd('bulk', this.bulkB);
         const bd = BUILDINGS[BI[this.bulkB]];
-        toast(res.n ? `🏗️ ${res.n} × ${bd.name} (💰 ${fmtInt(res.spent)})` : 'Or insuffisant ou rien à construire.', res.n ? 'ok' : 'err');
+        if (!res.pending) toast(res.n ? `🏗️ ${res.n} × ${bd.name} (💰 ${fmtInt(res.spent)})` : 'Or insuffisant ou rien à construire.', res.n ? 'ok' : 'err');
         break;
       }
     }

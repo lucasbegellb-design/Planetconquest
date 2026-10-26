@@ -5,7 +5,7 @@
 import { TECHS, REPEATABLES, canResearch, repeatCost } from '../tech/techtree.js';
 import { BUILDINGS, BI, NB, buildCost } from '../tech/buildings.js';
 import { clamp } from '../core/util.js';
-import { BAL } from './balance.js';
+import { BAL, AI_STYLES } from './balance.js';
 
 const pairKey = (a, b) => (a < b ? a * 4096 + b : b * 4096 + a);
 
@@ -29,7 +29,8 @@ export function aiResearch(g, c) {
       if (c.rp >= repeatCost(r, c.repeat[r.id] || 0)) g.researchRepeat(c.id, r.id);
       return;
     }
-    avail.sort((a, b) => a.cost - b.cost);
+    const pref = (AI_STYLES.find((x) => x.id === c.ai.style) || AI_STYLES[2]).tech;
+    avail.sort((a, b) => a.cost / (pref[a.branch] || 1) - b.cost / (pref[b.branch] || 1));
     const pick = avail[Math.min(avail.length - 1, Math.floor(g.rng.next() * 2))];
     if (c.rp < pick.cost) return;
     g.research(c.id, pick.id);
@@ -55,11 +56,11 @@ function think(g, c) {
   const avail = c.army - reserve;
   if (myOffs.length >= maxOff || c.army < st.armyCap * 0.5 || avail < c.army * 0.4 || g.t < c.ai.cool) return;
 
-  // une IA en paix n'ouvre un nouveau conflit que de temps en temps
-  const wantsWar = g.warCount(c.id) === 0 ? r.chance(BAL.AI_WAR_CHANCE * c.ai.aggr * g.diff.aggr) : r.chance(0.5);
+  // une IA en paix n'ouvre un nouveau conflit que de temps en temps, de plus en plus avec le temps
+  const ramp = clamp(0.4 + g.t / 1500, 0.4, 1);
+  const wantsWar = g.warCount(c.id) === 0 ? r.chance(BAL.AI_WAR_CHANCE * c.ai.aggr * (g.diff.war || 1) * ramp) : r.chance(0.5);
   const grace = g.t < BAL.AI_GRACE || !wantsWar;
-  const playerShare = g.playerId >= 0 ? g.cellsOf[g.playerId].size / g.nCells : 0;
-  const playerGrace = g.t < (BAL.AI_GRACE * 1.6 + (g.planet.level > 0 ? 150 : 0)) / g.diff.aggr;
+  const playerGrace = g.t < (g.diff.grace || 200) + (g.planet.level > 0 ? 150 : 0);
   let best = -1, bestS = 0;
   for (const nid of g.neighborsOf(c.id)) {
     const n = g.countries[nid];
@@ -77,7 +78,12 @@ function think(g, c) {
     } else defense = (n.army * 0.7 + avgMilitia(g, n)) * g.defQ(n);
     const mine = avail * 0.55 * g.atkQ(c);
     let s = (mine / Math.max(1, defense)) * c.ai.aggr * g.diff.aggr;
-    if (n.isPlayer) s *= g.diff.playerBias * (1 + 1.5 * Math.max(0, playerShare - 0.25));
+    if (n.isPlayer) {
+      // un joueur en bons termes est rarement visé ; une IA pacifique ne l'attaque que si elle le déteste
+      const rel = g.rel(c.id, nid);
+      if (!atWar && c.ai.style === 'pacifique' && rel > -30) continue;
+      s *= g.diff.playerBias * ramp * clamp(1 - rel / 60, 0.15, 1.35) * (1 + 1.5 * Math.max(0, g.cellsOf[nid].size / g.nCells - 0.25));
+    }
     if (atWar) s *= 1.35;
     else if (!n.neutral) {
       s *= Math.max(0.3, 1 - g.rel(c.id, nid) / 120);
@@ -118,7 +124,7 @@ function aiDiplomacy(g, c) {
     if (dur < 45) continue;
     const active = attacked || g.offensives.some((o) => o.a === c.id && o.d === e);
     if ((!active && r.chance(0.25)) || (attacked && pc < pe * 0.6 && r.chance(0.12))) {
-      if (E.isPlayer) g.propose('peace', c.id);
+      if (E.isPlayer) g.propose('peace', c.id, e);
       else if (acceptPeace(g, e, c.id)) g.makePeace(c.id, e);
     }
   }
@@ -139,7 +145,7 @@ function aiDiplomacy(g, c) {
         const Y = g.countries[y];
         if (y === c.id || y === strong || Y.neutral || !Y.alive) continue;
         if (g.atWar(c.id, y) || g.allied(c.id, y) || g.allied(y, strong) || g.rel(c.id, y) < -15) continue;
-        if (Y.isPlayer) { if (r.chance(0.35)) g.propose('alliance', c.id); }
+        if (Y.isPlayer) { if (r.chance(0.35)) g.propose('alliance', c.id, y); }
         else if (acceptAlliance(g, y, c.id)) g.makeAlliance(c.id, y);
         break;
       }
@@ -176,31 +182,50 @@ function aiBuild(g, c) {
   }
 }
 
-export function acceptPeace(g, who, from) {
+// ---------- évaluations diplomatiques (déterministes : insister ne change rien) ----------
+// Petite humeur propre à chaque paire, stable dans le temps
+const mood = (a, b) => ((((a * 73856093) ^ (b * 19349663)) >>> 0) % 1000) / 1000 * 0.16 - 0.08;
+const res = (ok, score, why) => ({ ok, score, why });
+
+export function evalPeace(g, who, from) {
   const W = g.countries[who], F = g.countries[from];
-  if (W.isPlayer) return false;
   const w = g.wars.get(pairKey(who, from));
   const dur = w ? g.t - w.since : 0;
+  if (dur < 30) return res(false, 0, 'la guerre vient de commencer');
   const pw = g.power(W), pf = g.power(F);
   const winning = g.offensives.some((o) => o.a === who && o.d === from && (o.ratio || 0) > 1.2);
-  if (winning && pw > pf * 1.2) return g.rng.chance(0.06);
-  const p = 0.2 + Math.min(0.4, dur / 400) + (pw < pf ? 0.3 : 0) + (W.morale < 40 ? 0.2 : 0);
-  return g.rng.chance(p);
+  const lost = 1 - W.st.ncells / Math.max(1, W.peakCells);
+  const score = 0.2 + Math.min(0.35, dur / 300) + (pw < pf ? 0.3 : 0) + (W.morale < 40 ? 0.15 : 0) + lost * 0.5
+    - (winning ? 0.5 : 0) + g.rel(who, from) / 200 + mood(who, from);
+  return res(score >= 0.55, score, winning ? 'ils gagnent la guerre' : pw > pf * 1.5 ? 'ils se sentent plus forts' : 'ils veulent encore se battre');
 }
 
-export function acceptAlliance(g, who, from) {
+export function evalAlliance(g, who, from) {
   const W = g.countries[who];
-  if (W.isPlayer || g.atWar(who, from) || g.alliesOf(who).length >= 3) return false;
+  if (g.atWar(who, from)) return res(false, 0, 'vous êtes en guerre');
+  if (g.alliesOf(who).length >= 3) return res(false, 0, 'trop d’alliés déjà');
+  const rel = g.rel(who, from);
+  if (rel < 0) return res(false, 0, 'relations trop mauvaises');
   const eW = new Set(g.enemiesOf(who));
   const common = g.enemiesOf(from).some((e) => eW.has(e));
-  let p = 0.12 + g.rel(who, from) / 150 + (common ? 0.4 : 0);
-  if (g.power(g.countries[from]) > g.power(W) * 1.5) p += 0.15;
-  return g.rng.chance(clamp(p, 0, 0.9));
+  let score = 0.1 + rel / 100 + (common ? 0.35 : 0) + mood(who, from);
+  if (g.power(g.countries[from]) > g.power(W) * 1.5) score += 0.15;
+  return res(score >= 0.55, score, common ? 'pas encore assez de confiance' : 'aucun ennemi commun');
 }
 
-export function acceptSurrender(g, who, from) {
+export function evalNap(g, who, from) {
+  if (g.atWar(who, from)) return res(false, 0, 'faites d’abord la paix');
+  const W = g.countries[who], F = g.countries[from];
+  const pw = g.power(W), pf = g.power(F);
+  const rel = g.rel(who, from);
+  let score = 0.35 + rel / 100 + (pw < pf ? 0.2 : 0) + mood(who, from);
+  if (pw > pf * 2) score -= 0.3;
+  if (g.warCount(who) > 0) score += 0.15;
+  return res(score >= 0.45, score, pw > pf * 2 ? 'ils lorgnent vos terres' : 'relations insuffisantes');
+}
+
+export function evalSurrender(g, who, from) {
   const W = g.countries[who];
-  if (W.isPlayer) return false;
   const pw = g.power(W), pf = g.power(g.countries[from]);
   const lost = 1 - W.st.ncells / Math.max(1, W.peakCells);
   const attacked = g.offensives.some((o) => o.a === from && o.d === who);
@@ -210,5 +235,10 @@ export function acceptSurrender(g, who, from) {
   if (pw > pf * (share > 0.7 ? 0.6 : 0.4)) p -= 0.6;
   if (lost < 0.25) p -= 0.3;
   if (!attacked) p *= 0.4;
-  return g.rng.chance(clamp(p, 0, 0.9));
+  return res(p >= 0.5, p, !attacked ? 'aucune offensive ne les menace' : 'ils peuvent encore résister');
 }
+
+// Versions booléennes pour les échanges entre IA
+export const acceptPeace = (g, who, from) => !g.countries[who].isPlayer && evalPeace(g, who, from).ok;
+export const acceptAlliance = (g, who, from) => !g.countries[who].isPlayer && evalAlliance(g, who, from).ok;
+export const acceptSurrender = (g, who, from) => !g.countries[who].isPlayer && evalSurrender(g, who, from).ok;

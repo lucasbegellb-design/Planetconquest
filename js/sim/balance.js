@@ -26,9 +26,19 @@ export const BAL = {
   ROCKET_WORK: 1600,
 };
 
+// grace : secondes de paix garanties pour les joueurs humains ; war : envie de guerre des IA ;
+// styles : poids des personnalités [pacifique, marchand, expansionniste, belliciste]
 export const DIFFICULTIES = {
-  facile: { label: 'Facile', eco: 0.8, research: 0.85, aggr: 0.7, playerBias: 0.6, think: 1.3, quality: 0.95 },
-  normal: { label: 'Normal', eco: 1, research: 1, aggr: 1, playerBias: 1, think: 1, quality: 1 },
-  difficile: { label: 'Difficile', eco: 1.2, research: 1.15, aggr: 1.25, playerBias: 1.3, think: 0.85, quality: 1.05 },
-  impossible: { label: 'Impossible', eco: 1.45, research: 1.35, aggr: 1.5, playerBias: 1.6, think: 0.7, quality: 1.12 },
+  facile: { label: 'Facile', eco: 0.85, research: 0.9, aggr: 0.75, playerBias: 0.5, think: 1.3, quality: 0.95, grace: 360, war: 0.55, styles: [4, 3, 2, 1] },
+  normal: { label: 'Normal', eco: 1, research: 1, aggr: 0.9, playerBias: 0.68, think: 1, quality: 1, grace: 240, war: 0.8, styles: [3, 3, 3, 1] },
+  difficile: { label: 'Difficile', eco: 1.12, research: 1.1, aggr: 1.05, playerBias: 0.92, think: 0.9, quality: 1.03, grace: 150, war: 0.98, styles: [2, 2, 4, 2] },
+  impossible: { label: 'Impossible', eco: 1.32, research: 1.25, aggr: 1.2, playerBias: 1.2, think: 0.75, quality: 1.08, grace: 100, war: 1.2, styles: [1, 1, 4, 4] },
 };
+
+// Personnalités des IA : agressivité et branche technologique préférée
+export const AI_STYLES = [
+  { id: 'pacifique', label: 'Pacifique', aggr: 0.45, tech: { pop: 2, eco: 1.5, mil: 0.7 } },
+  { id: 'marchand', label: 'Marchand', aggr: 0.7, tech: { eco: 2, pop: 1.2, mil: 0.8 } },
+  { id: 'expansionniste', label: 'Expansionniste', aggr: 1.0, tech: { mil: 1.3, eco: 1.1, pop: 1.1 } },
+  { id: 'belliciste', label: 'Belliciste', aggr: 1.4, tech: { mil: 2, pop: 1, eco: 0.8 } },
+];

@@ -98,7 +98,10 @@ export class Hud {
       `<div class="stat link" data-open="rank" title="Classement mondial">🏆 ${this.rank(g)}<small>/ ${this.alive}</small></div>`,
     ].join('');
     if (html !== this.lastStats) { $('#tb-stats').innerHTML = html; this.lastStats = html; }
-    $('#tb-time').textContent = '⏱ ' + fmtTime(g.t);
+    const left = g.match ? Math.max(0, g.match.ends - g.t) : -1;
+    const tt = $('#tb-time');
+    tt.textContent = left >= 0 ? '⏳ ' + fmtTime(left) : '⏱ ' + fmtTime(g.t);
+    tt.classList.toggle('urgent', left >= 0 && left < 60);
     // techno disponibles
     let afford = TECHS.filter((t) => canResearch(P.techs, P.era, t) && P.rp >= t.cost).length;
     if (P.era >= 4 && !TECHS.some((t) => canResearch(P.techs, P.era, t))) afford += REPEATABLES.filter((r) => P.rp >= repeatCost(r, P.repeat[r.id] || 0)).length;
@@ -139,14 +142,15 @@ export class Hud {
 
   showProposal(p) {
     const g = this.app.game, F = g.countries[p.from];
-    const what = `${p.type === 'peace' ? '🕊️' : '🤝'} <b>${esc(Art(F))}</b> ${v(F, 'vous propose', 'vous proposent')} ${p.type === 'peace' ? 'la paix' : 'une alliance'}.`;
+    if (p.to !== undefined && p.to !== g.playerId) return;
+    const what = `${p.type === 'peace' ? '🕊️' : p.type === 'nap' ? '📜' : '🤝'} <b>${esc(Art(F))}</b> ${v(F, 'vous propose', 'vous proposent')} ${p.type === 'peace' ? 'la paix' : p.type === 'nap' ? 'un pacte de non-agression' : 'une alliance'}.`;
     const t = toast(`${what}<div class="acts"><button class="btn small good" data-a="1">Accepter</button><button class="btn small" data-a="0">Refuser</button></div>`, '', 0);
     if (!t) return;
     this.propToasts.set(p.id, t);
     t.addEventListener('click', (e) => {
       const a = e.target.dataset.a;
       if (a === undefined) return;
-      g.answer(p.id, a === '1');
+      this.app.cmd('answer', p.id, a === '1');
       this.propToasts.delete(p.id);
       t.remove();
       this.app.panel.render(true);
