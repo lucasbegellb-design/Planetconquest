@@ -2,18 +2,19 @@
 import { $, $$, esc, toast, openModal } from './dom.js';
 import { fmtBig, fmtPop, fmtInt, fmt1, fmtTime, rgbToCss } from '../core/util.js';
 import { ERAS, TECHS, REPEATABLES, canResearch, repeatCost } from '../tech/techtree.js';
-import { Art } from '../core/fr.js';
+import { Art, v } from '../core/fr.js';
 
 export class Hud {
   constructor(app) {
     this.app = app;
+    this.propToasts = new Map();
     this.newsBox = $('#news');
     this.lastStats = '';
     $$('#speed button').forEach((b) => b.addEventListener('click', () => app.setSpeed(+b.dataset.speed)));
     $('#btn-tech').addEventListener('click', () => app.openTech());
     $('#btn-goals').addEventListener('click', () => app.openGoals());
     $('#btn-menu').addEventListener('click', () => app.openGameMenu());
-    $('#tb-country').addEventListener('click', () => app.focusPlayer(true));
+    $('#tb-country').addEventListener('click', () => app.selectPlayer());
     this.newsBox.addEventListener('click', () => this.openLog());
     const mm = $('#minimap');
     let dragging = false;
@@ -31,6 +32,7 @@ export class Hud {
   reset() {
     this.newsBox.innerHTML = '';
     $('#toasts').innerHTML = '';
+    this.propToasts.clear();
     this.lastStats = '';
   }
 
@@ -70,6 +72,10 @@ export class Hud {
       else if (age > 11000) el.classList.add('old');
     }
     if (document.body.dataset.era !== String(P.era)) document.body.dataset.era = P.era;
+    // propositions expirées
+    for (const [id, el] of this.propToasts) {
+      if (!g.proposals.some((p) => p.id === id)) { el.remove(); this.propToasts.delete(id); }
+    }
   }
 
   addNews(item) {
@@ -92,15 +98,15 @@ export class Hud {
 
   showProposal(p) {
     const g = this.app.game, F = g.countries[p.from];
-    const what = p.type === 'peace' ? `🕊️ <b>${esc(Art(F))}</b> vous propose la paix.` : `🤝 <b>${esc(Art(F))}</b> vous propose une alliance.`;
+    const what = `${p.type === 'peace' ? '🕊️' : '🤝'} <b>${esc(Art(F))}</b> ${v(F, 'vous propose', 'vous proposent')} ${p.type === 'peace' ? 'la paix' : 'une alliance'}.`;
     const t = toast(`${what}<div class="acts"><button class="btn small good" data-a="1">Accepter</button><button class="btn small" data-a="0">Refuser</button></div>`, '', 0);
     if (!t) return;
-    const kill = setTimeout(() => t.remove(), Math.max(1000, (p.until - g.t) * 1000 / Math.max(1, this.app.speed || 1)));
+    this.propToasts.set(p.id, t);
     t.addEventListener('click', (e) => {
       const a = e.target.dataset.a;
       if (a === undefined) return;
       g.answer(p.id, a === '1');
-      clearTimeout(kill);
+      this.propToasts.delete(p.id);
       t.remove();
       this.app.panel.render(true);
     });

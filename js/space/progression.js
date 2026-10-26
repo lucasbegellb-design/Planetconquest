@@ -66,13 +66,14 @@ export function planetParams(meta, p) {
   const L = Math.max(1, meta.level);
   const gal = meta.galaxy;
   const T = PLANET_TYPES[p.type];
-  const aiEra = Math.min(4, 1 + Math.floor(L * 0.7) + gal);
+  const aiEra = Math.min(4, L + gal);
   return {
     L,
-    targetCells: Math.min(900, Math.round((380 + 45 * L) * p.size)),
-    nAI: Math.min(70, 12 + 4 * L + 6 * gal),
+    targetCells: Math.min(900, Math.round((380 + 40 * L) * p.size)),
+    nAI: Math.min(60, 12 + 3 * L + 5 * gal),
     aiEra,
-    aiBonus: 1 + 0.09 * L + 0.2 * gal,
+    aiBonus: 1 + 0.1 * L + 0.25 * gal,      // économie et recherche des IA
+    aiQuality: 1 + 0.05 * L + 0.12 * gal,   // qualité de leurs soldats
     stars: Math.min(5, 1 + Math.floor(L / 2)),
     typeName: T.name,
   };
@@ -84,7 +85,7 @@ export function planetSpec(meta, p) {
     kind: 'proc', seed: p.seed, type: p.type, name: p.name,
     nCountries: k.nAI, targetCells: k.targetCells, neutralShare: 0.14,
     totalPop: 6000 * (1 + 0.15 * k.L), devRange: [Math.min(4, 1 + Math.floor(k.L / 3)), Math.min(5, 3 + Math.floor(k.L / 3))],
-    level: k.L, aiEra: k.aiEra, aiBonus: k.aiBonus,
+    level: k.L, aiEra: k.aiEra, aiBonus: k.aiBonus, aiQuality: k.aiQuality,
   };
 }
 
@@ -92,7 +93,7 @@ export function planetInfo(spec) {
   const T = PLANET_TYPES[spec.type] || PLANET_TYPES.terran;
   return {
     name: spec.name, type: spec.type, level: spec.level || 0, rules: T.rules, events: T.events,
-    aiBonus: spec.aiBonus || 1, aiEra: spec.aiEra || 0, neutralEra: Math.max(0, (spec.aiEra || 0) - 1),
+    aiBonus: spec.aiBonus || 1, aiQuality: spec.aiQuality || 1, aiEra: spec.aiEra || 0, neutralEra: Math.max(0, (spec.aiEra || 0) - 1),
   };
 }
 

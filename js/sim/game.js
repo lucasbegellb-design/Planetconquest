@@ -4,7 +4,7 @@ import { RNG } from '../core/rng.js';
 import { BAL, DIFFICULTIES } from './balance.js';
 import { BUILDINGS, NB, BI, buildCost } from '../tech/buildings.js';
 import { TECHS, TECH_BY_ID, ERAS, REPEAT_BY_ID, eraOf, techMods, canResearch, repeatCost, techsBeforeEra } from '../tech/techtree.js';
-import { Art, art, de, a as aFr } from '../core/fr.js';
+import { Art, art, de, a as aFr, v } from '../core/fr.js';
 import { wrapDx, clamp } from '../core/util.js';
 import { aiTick, aiResearch, acceptPeace, acceptAlliance, acceptSurrender } from './ai.js';
 import { eventsTick } from './events.js';
@@ -139,10 +139,30 @@ export class Game {
       c.gold = 40 + c.st.income * 25;
       c.peakCells = c.st.ncells;
     }
-    if (P && opts.meta && opts.meta.perk) {
-      P.army = P.st.armyCap * (0.8 + (opts.meta.perk.startArmy || 0));
-      P.gold += opts.meta.bonusGold || 0;
+    if (P && opts.landing != null) this._expedition(P, opts.meta || {});
+  }
+
+  // Débarquement : colons et force expéditionnaire à la mesure des armées locales
+  _expedition(P, meta) {
+    const ais = this.countries.filter((c) => !c.neutral && !c.isPlayer && c.alive);
+    let sumPop = 0, nCells = 0, sumArmy = 0;
+    for (const c of ais) { sumPop += c.st.pop; nCells += c.st.ncells; sumArmy += c.army; }
+    const avgCellPop = nCells ? sumPop / nCells : 5;
+    for (const cell of this.cellsOf[P.id]) {
+      const v = Math.max(this.pop[cell], avgCellPop * 2.5);
+      this.pop[cell] = v; this.base[cell] = Math.max(this.base[cell], v);
     }
+    this.econ(0.01);
+    // force effective = 2 × celle d'une civilisation locale moyenne
+    let avgQ = 0;
+    for (const c of ais) avgQ += this.atkQ(c);
+    avgQ = ais.length ? avgQ / ais.length : 1;
+    const avgArmy = ais.length ? sumArmy / ais.length : P.st.armyCap;
+    const exp = (avgArmy * avgQ * 2) / Math.max(0.1, this.atkQ(P));
+    P.army = Math.max(P.st.armyCap * 0.8, exp * (1 + (meta.perk?.startArmy || 0)));
+    P.gold += 300 + (meta.bonusGold || 0);
+    // tête de pont : défense renforcée pendant l'installation
+    this.addTemp(P, 'def', 0.8, 240);
   }
 
   _landPlayer(cellId, meta) {
@@ -178,7 +198,7 @@ export class Game {
 
   // ---------- qualités militaires ----------
   moraleF(c) { return 0.65 + (0.7 * c.morale) / 100; }
-  aiQ(c) { return c.isPlayer ? 1 : this.diff.quality * (this.planet.aiBonus || 1); }
+  aiQ(c) { return c.isPlayer ? 1 : this.diff.quality * (this.planet.aiQuality || 1); }
   atkQ(c) {
     if (c.neutral) return ERAS[this.planet.neutralEra || 0].mult * 0.9;
     return ERAS[c.era].mult * (1 + c.mods.atk + c.perk.atk + c.tmod.atk) * this.moraleF(c) * this.aiQ(c);
@@ -314,8 +334,8 @@ export class Game {
     if (era > c.era) {
       c.era = era;
       if (!silent) {
-        if (c.isPlayer) this.say(`🏛️ Vous entrez dans l'époque ${ERAS[era].name.toLowerCase()} !`, 'era', { player: true, imp: true });
-        else if (!this.eraFirsts[era]) this.say(`🏛️ ${Art(c)} est la première civilisation à entrer dans l'époque ${ERAS[era].name.toLowerCase()}.`, 'era', { imp: true });
+        if (c.isPlayer) this.say(`🏛️ Vous entrez dans l'époque ${ERAS[era].adj} !`, 'era', { player: true, imp: true });
+        else if (!this.eraFirsts[era]) this.say(`🏛️ ${Art(c)} ${v(c, 'est', 'sont')} la première civilisation à entrer dans l'époque ${ERAS[era].adj}.`, 'era', { imp: true });
         this.eraFirsts[era] = true;
         this.emit('era', { id: c.id, era });
       }
@@ -416,16 +436,16 @@ export class Game {
     if (B.neutral || this.atWar(a, b)) return;
     if (this.allied(a, b)) {
       this.alliances.delete(pairKey(a, b));
-      this.say(`🗡️ ${Art(A)} trahit son allié${B.art === 'la' ? 'e' : ''} : ${art(B)} !`, 'war', { player: this.involvesPlayer(a, b), imp: true });
+      this.say(`🗡️ Trahison : ${Art(A)} ${v(A, 'rompt', 'rompent')} l'alliance et ${v(A, 'attaque', 'attaquent')} ${art(B)} !`, 'war', { player: this.involvesPlayer(a, b), imp: true });
     }
     this._setWar(a, b);
     if (this.involvesPlayer(a, b) || this.isNearPlayer(a) || this.isNearPlayer(b) || (this.notable(a) && this.notable(b))) {
-      this.say(`⚔️ ${Art(A)} déclare la guerre ${aFr(B)} !`, 'war', { player: this.involvesPlayer(a, b), imp: this.involvesPlayer(a, b) });
+      this.say(`⚔️ ${Art(A)} ${v(A, 'déclare', 'déclarent')} la guerre ${aFr(B)} !`, 'war', { player: this.involvesPlayer(a, b), imp: this.involvesPlayer(a, b) });
     }
     for (const ally of this.alliesOf(b)) {
       if (ally === a || this.allied(ally, a) || !this.countries[ally].alive) continue;
       if (this._setWar(ally, a) && (this.involvesPlayer(ally, a) || this.notable(ally))) {
-        this.say(`🤝 ${Art(this.countries[ally])} entre en guerre aux côtés ${de(B)}.`, 'war', { player: this.involvesPlayer(ally, a) });
+        this.say(`🤝 ${Art(this.countries[ally])} ${v(this.countries[ally], 'entre', 'entrent')} en guerre aux côtés ${de(B)}.`, 'war', { player: this.involvesPlayer(ally, a) });
       }
     }
     this.emit('war', { a, b });
@@ -455,7 +475,7 @@ export class Game {
     if (!this.allied(a, b)) return;
     this.alliances.delete(pairKey(a, b));
     this.addRel(a, b, -40);
-    this.say(`💔 ${Art(this.countries[a])} rompt son alliance avec ${art(this.countries[b])}.`, 'alliance', { player: this.involvesPlayer(a, b) });
+    this.say(`💔 ${Art(this.countries[a])} ${v(this.countries[a], 'rompt son', 'rompent leur')} alliance avec ${art(this.countries[b])}.`, 'alliance', { player: this.involvesPlayer(a, b) });
   }
 
   // ---------- offensives ----------
@@ -632,7 +652,7 @@ export class Game {
         this._relocateCapital(D);
         D.morale = Math.max(5, D.morale - 10);
         if (this.involvesPlayer(a, d) || this.notable(d)) {
-          this.say(`🏰 ${Art(A)} s'empare de la capitale ${de(D)} !`, 'capture', { player: this.involvesPlayer(a, d), imp: true });
+          this.say(`🏰 ${Art(A)} ${v(A, "s'empare", "s'emparent")} de la capitale ${de(D)} !`, 'capture', { player: this.involvesPlayer(a, d), imp: true });
         }
       }
     }
@@ -661,7 +681,7 @@ export class Game {
     for (const k of [...this.alliances]) if (Math.floor(k / 4096) === d || k % 4096 === d) this.alliances.delete(k);
     this.proposals = this.proposals.filter((p) => p.from !== d);
     const pl = this.involvesPlayer(d, by);
-    this.say(`💥 ${Art(A)} annexe ${art(D)} !`, 'annex', { player: pl, imp: pl || this.notable(by) || D.peakCells >= 6 });
+    this.say(`💥 ${Art(A)} ${v(A, 'annexe', 'annexent')} ${art(D)} !`, 'annex', { player: pl, imp: pl || this.notable(by) || D.peakCells >= 6 });
     this.emit('eliminated', { id: d, by });
     if (d === this.playerId) {
       this.over = 'defeat';
@@ -671,7 +691,7 @@ export class Game {
 
   surrender(loser, winner) {
     const L = this.countries[loser], Wn = this.countries[winner];
-    this.say(`🏳️ ${Art(L)} capitule face ${aFr(Wn)} !`, 'annex', { player: this.involvesPlayer(loser, winner), imp: true });
+    this.say(`🏳️ ${Art(L)} ${v(L, 'capitule', 'capitulent')} face ${aFr(Wn)} !`, 'annex', { player: this.involvesPlayer(loser, winner), imp: true });
     const cells = [...this.cellsOf[loser]];
     const ref = Wn.capital >= 0 ? Wn.capital : cells[0];
     cells.sort((x, y) => this.dist(x, ref) - this.dist(y, ref));
@@ -681,6 +701,10 @@ export class Game {
   // ---------- propositions de l'IA au joueur ----------
   propose(type, from) {
     if (this.proposals.some((p) => p.from === from && p.type === type)) return;
+    const F = this.countries[from];
+    if (F.ai.lastProp && this.t - F.ai.lastProp < 120) return;
+    if (this.proposals.length >= 3) return;
+    F.ai.lastProp = this.t;
     const p = { id: this.nextPropId++, type, from, until: this.t + 35 };
     this.proposals.push(p);
     this.emit('proposal', p);
@@ -701,20 +725,20 @@ export class Game {
     if (!this.atWar(this.playerId, target)) return { ok: false, msg: 'Vous n’êtes pas en guerre' };
     if (acceptPeace(this, target, this.playerId)) { this.makePeace(this.playerId, target); return { ok: true, msg: 'Paix acceptée' }; }
     this.addRel(this.playerId, target, -3);
-    return { ok: false, msg: `${Art(this.countries[target])} refuse la paix` };
+    return { ok: false, msg: `${Art(this.countries[target])} ${v(this.countries[target], 'refuse', 'refusent')} la paix` };
   }
   playerProposeAlliance(target) {
     if (this.atWar(this.playerId, target)) return { ok: false, msg: 'Faites d’abord la paix' };
     if (this.allied(this.playerId, target)) return { ok: false, msg: 'Déjà alliés' };
     if (acceptAlliance(this, target, this.playerId)) { this.makeAlliance(this.playerId, target); return { ok: true, msg: 'Alliance conclue' }; }
     this.addRel(this.playerId, target, -2);
-    return { ok: false, msg: `${Art(this.countries[target])} décline l'alliance` };
+    return { ok: false, msg: `${Art(this.countries[target])} ${v(this.countries[target], 'décline', 'déclinent')} l'alliance` };
   }
   playerDemandSurrender(target) {
     if (!this.atWar(this.playerId, target)) return { ok: false, msg: 'Vous n’êtes pas en guerre' };
     if (acceptSurrender(this, target, this.playerId)) { this.surrender(target, this.playerId); return { ok: true, msg: 'Reddition acceptée !' }; }
     this.addRel(this.playerId, target, -8);
-    return { ok: false, msg: `${Art(this.countries[target])} refuse de capituler` };
+    return { ok: false, msg: `${Art(this.countries[target])} ${v(this.countries[target], 'refuse', 'refusent')} de capituler` };
   }
 
   // ---------- fusée ----------

@@ -233,6 +233,14 @@ body[data-era='3'] .news-item.player, body[data-era='4'] .news-item.player { bac
 .toast.ok { border-color: rgba(76, 195, 138, 0.6); }
 .toast .acts { display: flex; gap: 6px; margin-top: 8px; justify-content: flex-end; }
 
+/* infobulle (souris) */
+.tip {
+  position: fixed; z-index: 30; pointer-events: none; background: rgba(8, 12, 20, 0.92); border: 1px solid var(--line);
+  border-radius: 8px; padding: 5px 9px; font-size: 12px; white-space: nowrap; transform: translate(14px, 14px);
+}
+.tip b { font-weight: 650; }
+.tip .hint { font-size: 11px; }
+
 /* ---------- modales ---------- */
 .modal { position: fixed; inset: 0; z-index: 40; background: rgba(3, 6, 12, 0.66); display: flex; align-items: center; justify-content: center; padding: 14px; backdrop-filter: blur(3px); }
 .modal-box {

@@ -59,7 +59,7 @@ function think(g, c) {
   const wantsWar = g.warCount(c.id) === 0 ? r.chance(BAL.AI_WAR_CHANCE * c.ai.aggr * g.diff.aggr) : r.chance(0.5);
   const grace = g.t < BAL.AI_GRACE || !wantsWar;
   const playerShare = g.playerId >= 0 ? g.cellsOf[g.playerId].size / g.nCells : 0;
-  const playerGrace = g.t < (BAL.AI_GRACE * 1.6) / g.diff.aggr;
+  const playerGrace = g.t < (BAL.AI_GRACE * 1.6 + (g.planet.level > 0 ? 150 : 0)) / g.diff.aggr;
   let best = -1, bestS = 0;
   for (const nid of g.neighborsOf(c.id)) {
     const n = g.countries[nid];
@@ -108,8 +108,10 @@ function aiDiplomacy(g, c) {
     const dur = g.t - w.since;
     const pc = g.power(c), pe = g.power(E);
     const attacked = g.offensives.some((o) => o.a === e && o.d === c.id);
-    // capitulation
-    if (attacked && c.st.ncells <= Math.max(2, c.peakCells * 0.35) && pc < pe * 0.2 && r.chance(0.12)) {
+    // capitulation (plus probable quand l'ennemi domine déjà la planète)
+    const share = g.cellsOf[e].size / g.nCells;
+    const lim = share > 0.7 ? 0.4 : 0.2;
+    if (attacked && c.st.ncells <= Math.max(2, c.peakCells * (share > 0.7 ? 0.6 : 0.35)) && pc < pe * lim && r.chance(0.12)) {
       g.surrender(c.id, e);
       return true;
     }
@@ -155,7 +157,9 @@ function aiDiplomacy(g, c) {
 
 function aiBuild(g, c) {
   if (c.gold < 45) return;
-  if (g.warCount(c.id) > 0 && c.gold > 400 + c.st.income * 60) g.hireMercenaries(c.id, c.gold * 0.4);
+  if (g.warCount(c.id) > 0 && c.gold > 400 + c.st.income * 60 && c.army < c.st.armyCap * 1.1) {
+    g.hireMercenaries(c.id, Math.min(c.gold * 0.4, (c.st.armyCap * 1.15 - c.army) * g.mercInfo(c.id).price));
+  }
   const r = g.rng;
   const cells = [...g.cellsOf[c.id]];
   if (!cells.length) return;
@@ -200,8 +204,10 @@ export function acceptSurrender(g, who, from) {
   const pw = g.power(W), pf = g.power(g.countries[from]);
   const lost = 1 - W.st.ncells / Math.max(1, W.peakCells);
   const attacked = g.offensives.some((o) => o.a === from && o.d === who);
+  const share = g.cellsOf[from].size / g.nCells;
   let p = (pw < pf * 0.2 ? 0.3 : 0) + (lost > 0.4 ? 0.3 : 0) + (W.st.ncells <= 2 ? 0.15 : 0) + (W.morale < 30 ? 0.2 : 0);
-  if (pw > pf * 0.4) p -= 0.6;
+  p += Math.max(0, share - 0.6) * 0.8;
+  if (pw > pf * (share > 0.7 ? 0.6 : 0.4)) p -= 0.6;
   if (lost < 0.25) p -= 0.3;
   if (!attacked) p *= 0.4;
   return g.rng.chance(clamp(p, 0, 0.9));

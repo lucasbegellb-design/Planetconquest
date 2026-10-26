@@ -55,3 +55,7 @@ export function en(c) {
 }
 
 export function plural(n, sing, plur) { return Math.abs(n) >= 2 ? plur : sing; }
+
+// Accord du verbe avec un pays : « la France annexe » / « les États-Unis annexent »
+export const isPl = (c) => c.art === 'les';
+export const v = (c, sing, plur) => (isPl(c) ? plur : sing);

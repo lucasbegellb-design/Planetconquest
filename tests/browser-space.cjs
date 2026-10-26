@@ -8,6 +8,7 @@ const OUT = process.argv[3] || '/tmp/claude-0';
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const page = await ctx.newPage();
+  await page.addInitScript(() => { try { localStorage.setItem('terra-conquest-welcome', '1'); } catch (e) {} });
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(m.type() + ': ' + m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message + '\n' + e.stack));

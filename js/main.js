@@ -17,7 +17,7 @@ import { BAL, DIFFICULTIES } from './sim/balance.js';
 import { ERAS } from './tech/techtree.js';
 import { RNG } from './core/rng.js';
 import { fmtBig, fmtPop, fmtInt, fmt1, fmtTime, rgbToCss, nextFrame, clamp } from './core/util.js';
-import { Art, art } from './core/fr.js';
+import { Art, art, v } from './core/fr.js';
 import { newMeta, recordConquest, planetSpec, planetInfo, PERKS } from './space/progression.js';
 import { SpaceView } from './space/spaceView.js';
 
@@ -70,7 +70,29 @@ class App {
     });
     attachInput(this.canvas, camProxy, {
       tap: (sx, sy) => this.onTap(sx, sy),
+      hover: (sx, sy) => this.onHover(sx, sy),
     });
+    this.canvas.addEventListener('pointerleave', () => { $('#tip').hidden = true; });
+    this.canvas.addEventListener('pointerdown', () => { $('#tip').hidden = true; });
+  }
+
+  onHover(sx, sy) {
+    const tip = $('#tip');
+    if (!this.renderer || !matchMedia('(hover: hover)').matches || this.mode === 'space' || this.mode === 'menu') { tip.hidden = true; return; }
+    const cell = this.renderer.cellAt(sx, sy);
+    if (cell < 0) { tip.hidden = true; return; }
+    const c = this.map.cells[cell];
+    let who;
+    if (this.game) {
+      const X = this.game.countries[this.game.owner[cell]];
+      who = X.neutral ? 'Terres libres' : X.name;
+      if (X.id === this.game.playerId) who += ' (vous)';
+    } else {
+      who = c.initOwner >= 0 ? this.map.countries0[c.initOwner].name : 'Terres libres';
+    }
+    tip.innerHTML = `<b>${esc(who)}</b>${c.region ? ` · ${esc(c.region)}` : ''}`;
+    tip.style.left = sx + 'px'; tip.style.top = sy + 'px';
+    tip.hidden = false;
   }
 
   onTap(sx, sy) {
@@ -229,7 +251,23 @@ class App {
     $('#pick').hidden = true;
     this.beginPlay(game, true);
     const P = game.countries[game.playerId];
-    game.say(`👑 ${Art(P)} entre dans l'Histoire. Conquérez ${planet.name === 'Terre' ? 'la Terre' : planet.name} !`, 'info', { player: true, imp: true });
+    this.welcome();
+    game.say(`👑 ${Art(P)} ${v(P, 'entre', 'entrent')} dans l'Histoire. Conquérez ${planet.name === 'Terre' ? 'la Terre' : planet.name} !`, 'info', { player: true, imp: true });
+  }
+
+  welcome() {
+    let seen = false;
+    try { seen = !!localStorage.getItem('terra-conquest-welcome'); localStorage.setItem('terra-conquest-welcome', '1'); } catch { /* ignore */ }
+    if (seen) return;
+    openModal(`<div class="help"><h2>👋 Bienvenue, souverain·e !</h2>
+      <ul>
+        <li><b>Touchez un pays voisin</b> puis choisissez le % de votre armée à engager et lancez l'attaque. Le <b>rapport de force estimé</b> vous indique vos chances.</li>
+        <li>Votre <b>armée en réserve</b> défend vos frontières : n'engagez pas tout d'un coup.</li>
+        <li>Touchez <b>vos propres territoires</b> pour y construire fermes, mines, casernes, universités…</li>
+        <li>Ouvrez les <b>technologies 🔬</b> dès que vous avez des points de recherche (ou activez la recherche automatique).</li>
+        <li>La simulation est <b>en pause</b> pendant que cette fenêtre est ouverte. Vitesse : ⏸ x1 x2 x4.</li>
+      </ul>
+      <div class="btn-row"><button class="btn primary" onclick="document.getElementById('modal-close').click()">C'est parti !</button></div></div>`, { narrow: true });
   }
 
   beginPlay(game, focus) {
@@ -248,7 +286,7 @@ class App {
     game.on('defeat', () => this.onDefeat());
     game.on('rocketReady', () => toast('🚀 La fusée est prête ! Ouvrez les objectifs pour la lancer.', 'ok', 6000));
     game.on('launch', () => this.onLaunch());
-    game.on('war', (w) => { if (w.b === game.playerId) toast(`⚔️ ${esc(Art(game.countries[w.a]))} vous déclare la guerre !`, 'err', 4000); });
+    game.on('war', (w) => { if (w.b === game.playerId) toast(`⚔️ ${esc(Art(game.countries[w.a]))} ${v(game.countries[w.a], 'vous déclare', 'vous déclarent')} la guerre !`, 'err', 4000); });
     this.hud.reset();
     $('#hud').hidden = false;
     this.panel.hide();
@@ -258,6 +296,14 @@ class App {
     if (focus) this.focusPlayer(true);
     this.hud.update();
     this.autosave();
+  }
+
+  selectPlayer() {
+    const g = this.game;
+    if (!g) return;
+    const cap = g.countries[g.playerId].capital;
+    if (cap >= 0) this.select(cap);
+    this.focusPlayer(true);
   }
 
   focusPlayer(zoomIn) {
@@ -382,7 +428,7 @@ class App {
   onPlayerEra(era) {
     const E = ERAS[era];
     document.body.dataset.era = era;
-    openModal(`<div class="center"><div class="big-emoji">🏛️</div><h2>Époque ${E.name.toLowerCase()} !</h2>
+    openModal(`<div class="center"><div class="big-emoji">🏛️</div><h2>Époque ${E.adj} !</h2>
       <p>Vos soldats sont désormais <b>×${E.mult.toFixed(2).replace('.', ',')}</b> plus efficaces et de nouvelles technologies sont disponibles.</p>
       ${era === 4 ? '<p>Construisez un <b>spatioport</b> et une <b>fusée</b> pour quitter la planète une fois celle-ci entièrement conquise.</p>' : ''}
       <div class="btn-row"><button class="btn primary" onclick="document.getElementById('modal-close').click()">Continuer</button></div></div>`, { narrow: true });
@@ -487,13 +533,13 @@ class App {
     const meta = this.meta, spec = this.setup.spec;
     const game = Game.create(this.map, {
       difficulty: meta.difficulty || 'normal', planet: planetInfo(spec), landing: cell,
-      meta: { name: meta.name, art: meta.art, title: meta.title, color: meta.color, techs: meta.techs, repeat: meta.repeat, perk: meta.perk, bonusGold: meta.bonusGold + 300 },
+      meta: { name: meta.name, art: meta.art, title: meta.title, color: meta.color, techs: meta.techs, repeat: meta.repeat, perk: meta.perk, bonusGold: meta.bonusGold },
     });
     $('#pick').hidden = true;
     this.speed = this.prevSpeed || 1;
     this.beginPlay(game, true);
     const P = game.countries[game.playerId];
-    game.say(`🛸 ${Art(P)} débarque sur ${spec.name} ! Planète n° ${meta.level + 1} — conquérez-la.`, 'space', { player: true, imp: true });
+    game.say(`🛸 ${Art(P)} ${v(P, 'débarque', 'débarquent')} sur ${spec.name} ! Planète n° ${meta.level + 1} — conquérez-la.`, 'space', { player: true, imp: true });
   }
 
   // ---------- sauvegarde ----------

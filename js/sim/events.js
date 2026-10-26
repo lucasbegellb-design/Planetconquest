@@ -1,6 +1,6 @@
 // Événements aléatoires : révoltes, épidémies, ruées vers l'or, catastrophes propres à chaque planète…
-import { Art, art, en, cap } from '../core/fr.js';
-import { fmtInt } from '../core/util.js';
+import { Art, art, en, cap, v } from '../core/fr.js';
+import { fmtInt, fmtBig } from '../core/util.js';
 import { NB } from '../tech/buildings.js';
 import { NameGen } from '../map/names.js';
 import { randomCountryColor } from '../map/colors.js';
@@ -50,7 +50,8 @@ function pickTarget(g, alive, weightFn) {
 const shout = (g, c) => g.involvesPlayer(c.id) || g.notable(c.id);
 
 function revolt(g, alive) {
-  const cands = alive.filter((c) => c.st.ncells >= 5);
+  // pas de révolte en début de partie ni dans les petits pays ; le joueur est épargné les 5 premières minutes
+  const cands = alive.filter((c) => c.st.ncells >= 6 && g.t > 90 && !(c.isPlayer && g.t < 300));
   if (!cands.length) return;
   const D = pickTarget(g, cands, (c) => {
     let u = 0;
@@ -104,8 +105,8 @@ function revolt(g, alive) {
   g.computeBorders();
   if (shout(g, D)) {
     const msg = revived
-      ? `🔥 Révolte ${en(D)} : ${art(R)} renaît de ses cendres !`
-      : `🔥 Révolte ${en(D)} : ${art(R)} proclame son indépendance !`;
+      ? `🔥 Révolte ${en(D)} : ${art(R)} ${v(R, 'renaît de ses', 'renaissent de leurs')} cendres !`
+      : `🔥 Révolte ${en(D)} : ${art(R)} ${v(R, 'proclame son', 'proclament leur')} indépendance !`;
     g.say(msg, 'revolt', { player: D.isPlayer, imp: D.isPlayer || revived });
   }
   g.emit('revolt', { id: R.id, from: D.id });
@@ -168,7 +169,7 @@ function disaster(g, alive) {
   g.emit('disaster', { id, cell: center, country: D.id });
   if (shout(g, D)) {
     const where = g.map.cells[center].region ? ` (${g.map.cells[center].region})` : '';
-    const victims = lost >= 0.01 ? ` — ${fmtInt(lost * 1e6)} victimes` : '';
+    const victims = lost >= 0.01 ? ` — ${fmtBig(lost * 1e6)} victimes` : '';
     g.say(`${def.icon} ${def.label} ${en(D)}${where}${victims}.`, 'event', { player: D.isPlayer });
   }
 }

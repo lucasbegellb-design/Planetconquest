@@ -5,7 +5,7 @@ import { Camera } from './camera.js';
 import { wrapDx, clamp, rgbToCss, fmtBig, mixRgb } from '../core/util.js';
 import { ERAS } from '../tech/techtree.js';
 
-const MAX_PARTICLES = 700;
+const MAX_PARTICLES = 450;
 
 export class Renderer {
   constructor(canvas, map) {
@@ -89,6 +89,7 @@ export class Renderer {
   }
   flush() {
     if (!this.dirty.length) return;
+    this.halfDirty = true;
     if (this.dirty.length > 40) {
       this.octx.putImageData(this.img, 0, 0);
     } else {
@@ -258,7 +259,15 @@ export class Renderer {
     if (w === undefined) { this.ctx.font = '600 100px ' + this.fontFamily(); w = this.ctx.measureText(text).width / 100; this.textW.set(text, w); }
     return w;
   }
-  fontFamily() { return getComputedStyle(document.body).getPropertyValue('--head') || 'Georgia, serif'; }
+  fontFamily() {
+    const era = document.body.dataset.era;
+    if (this._fontEra !== era) {
+      this._fontEra = era;
+      this._font = getComputedStyle(document.body).getPropertyValue('--head').trim() || 'Georgia, serif';
+      this.textW.clear();
+    }
+    return this._font;
+  }
 
   // ---------- effets ----------
   explosion(x, y, scale = 1) {
@@ -305,7 +314,7 @@ export class Renderer {
     ctx.imageSmoothingQuality = 'high';
     const copies = cam.copies();
     const ox = cam.cw / 2 - cam.x * s, oy = cam.ch / 2 - cam.y * s;
-    for (const k of copies) ctx.drawImage(this.off, ox + k * s, oy, this.W * s, this.H * s);
+    this.drawMap(ctx, s, ox, oy, copies);
 
     for (const k of copies) {
       ctx.save();
@@ -365,6 +374,35 @@ export class Renderer {
       ctx.restore();
     }
     if (R.t > 3.5) { const d = R.done; this.rocket = null; d && d(); }
+  }
+
+  // Ne copie que la partie visible ; demi-résolution quand on est dézoomé (bien plus rapide sans GPU)
+  drawMap(ctx, s, ox, oy, copies) {
+    const cam = this.cam, W = this.W, H = this.H;
+    let src = this.off, f = 1;
+    if (s < 0.55) {
+      if (!this.half) {
+        this.half = document.createElement('canvas');
+        this.half.width = Math.ceil(W / 2); this.half.height = Math.ceil(H / 2);
+        this.hctx = this.half.getContext('2d');
+        this.halfDirty = true; this.halfT = -1;
+      }
+      if (this.halfDirty && this.time - this.halfT > 0.25) {
+        this.hctx.imageSmoothingEnabled = true; this.hctx.imageSmoothingQuality = 'high';
+        this.hctx.drawImage(this.off, 0, 0, this.half.width, this.half.height);
+        this.halfDirty = false; this.halfT = this.time;
+      }
+      src = this.half; f = this.half.width / W;
+    }
+    const left = cam.x - cam.cw / 2 / s, right = cam.x + cam.cw / 2 / s;
+    const top = Math.max(0, cam.y - cam.ch / 2 / s - 1), bottom = Math.min(H, cam.y + cam.ch / 2 / s + 1);
+    if (bottom <= top) return;
+    for (const k of copies) {
+      const wx0 = Math.max(k, left - 1), wx1 = Math.min(k + W, right + 1);
+      if (wx1 <= wx0) continue;
+      const sx = wx0 - k, sw = wx1 - wx0;
+      ctx.drawImage(src, sx * f, top * f, sw * f, (bottom - top) * f, ox + wx0 * s, oy + top * s, sw * s, (bottom - top) * s);
+    }
   }
 
   spawnBattleFx(dt) {
