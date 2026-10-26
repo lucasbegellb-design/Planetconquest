@@ -1,0 +1,1 @@
+{"name":"terra-conquest","private":true,"type":"module","scripts":{"serve":"python3 -m http.server 8080","test":"node tests/genmap.mjs earth"}}
