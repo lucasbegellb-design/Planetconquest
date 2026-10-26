@@ -419,7 +419,7 @@ export class Game {
       this.say(`🗡️ ${Art(A)} trahit son allié${B.art === 'la' ? 'e' : ''} : ${art(B)} !`, 'war', { player: this.involvesPlayer(a, b), imp: true });
     }
     this._setWar(a, b);
-    if (this.involvesPlayer(a, b) || this.notable(a) || this.notable(b)) {
+    if (this.involvesPlayer(a, b) || this.isNearPlayer(a) || this.isNearPlayer(b) || (this.notable(a) && this.notable(b))) {
       this.say(`⚔️ ${Art(A)} déclare la guerre ${aFr(B)} !`, 'war', { player: this.involvesPlayer(a, b), imp: this.involvesPlayer(a, b) });
     }
     for (const ally of this.alliesOf(b)) {
@@ -446,7 +446,7 @@ export class Game {
     if (this.atWar(a, b)) this.makePeace(a, b, true);
     this.alliances.add(pairKey(a, b));
     this.addRel(a, b, 40);
-    if (this.involvesPlayer(a, b) || this.notable(a) || this.notable(b)) {
+    if (this.involvesPlayer(a, b) || this.isNearPlayer(a) || this.isNearPlayer(b) || (this.notable(a) && this.notable(b))) {
       this.say(`🤝 Alliance entre ${art(this.countries[a])} et ${art(this.countries[b])}.`, 'alliance', { player: this.involvesPlayer(a, b), imp: this.involvesPlayer(a, b) });
     }
     this.emit('alliance', { a, b });
@@ -487,6 +487,30 @@ export class Game {
   // territoire « historique » du pays (patriotisme : +25 % de défense)
   isCore(cell, D) { return this.coreName[cell] === D.name; }
   canReach(a, d) { return !!this.findFront(a, d, -1); }
+  // Défense d'un territoire face à une offensive de `troops` soldats (load = total des offensives contre D)
+  defenseAt(D, cell, troops, load) {
+    const cd = this.map.cells[cell];
+    const bar = this.build[cell * NB + BI.barracks];
+    const share = D.neutral ? 0 : troops / (load + 0.35 * D.army + 1);
+    const dArmy = D.neutral ? 0 : D.army * Math.min(1, share);
+    const dTroops = this.militia(cell) + dArmy;
+    const core = !D.neutral && this.isCore(cell, D) ? 1.25 : 1;
+    const qd = this.defQ(D) * cd.def * (1 + 0.25 * bar) * (cell === D.capital ? 1.3 : 1) * core * (1 - 0.3 * this.unrest[cell]);
+    return { dArmy, dTroops, qd };
+  }
+  // Rapport de force estimé d'une attaque (pour l'interface)
+  estimateAttack(a, d, frac, target = -1) {
+    const A = this.countries[a], D = this.countries[d];
+    const f = this.findFront(a, d, target);
+    if (!f) return null;
+    const ex = this.offensives.find((o) => o.a === a && o.d === d);
+    const troops = A.army * frac + (ex ? ex.troops : 0);
+    let load = troops;
+    for (const o of this.offensives) if (o.d === d && o !== ex) load += o.troops;
+    const qa = this.atkQ(A) * (f.naval ? this.navalMult(A, { src: f.src, len: f.len }) : 1);
+    const { dTroops, qd } = this.defenseAt(D, f.cur, troops, load);
+    return { ratio: (troops * qa) / Math.max(1, dTroops * qd), naval: f.naval, cell: f.cur };
+  }
   navalMult(A, o) {
     let m = (this.planet.rules.naval || 0.65) + A.mods.naval + (this.build[o.src * NB + BI.port] ? 0.25 : 0) - o.len / 500;
     return clamp(m, 0.3, 1);
@@ -550,13 +574,7 @@ export class Game {
       }
       const cell = o.cur, cd = cells[cell];
       const qa = this.atkQ(A) * (o.naval ? this.navalMult(A, o) : 1);
-      const bar = this.build[cell * NB + BI.barracks];
-      const mil = this.militia(cell);
-      const share = D.neutral ? 0 : o.troops / ((load.get(o.d) || 0) + 0.35 * D.army + 1);
-      const dArmy = D.neutral ? 0 : D.army * Math.min(1, share);
-      const dTroops = mil + dArmy;
-      const core = !D.neutral && this.isCore(cell, D) ? 1.25 : 1;
-      const qd = this.defQ(D) * cd.def * (1 + 0.25 * bar) * (cell === D.capital ? 1.3 : 1) * core * (1 - 0.3 * this.unrest[cell]);
+      const { dArmy, dTroops, qd } = this.defenseAt(D, cell, o.troops, load.get(o.d) || 0);
       const sA = o.troops * qa, sD = dTroops * qd;
       const r = sA / Math.max(1, sD);
       const f = (1.7 * r * r) / (0.7 + r * r);
