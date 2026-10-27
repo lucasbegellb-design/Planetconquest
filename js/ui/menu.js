@@ -68,6 +68,7 @@ export function initMenu(h) {
   $('#btn-help').addEventListener('click', () => h.onHelp());
   $('#btn-load').addEventListener('click', () => h.onLoad());
   $('#btn-settings').addEventListener('click', () => h.onSettings());
+  $('#btn-ach').addEventListener('click', () => h.onAchievements());
   $('#btn-import').addEventListener('click', () => $('#import-file').click());
   $('#import-file').addEventListener('change', async (e) => {
     const f = e.target.files[0];

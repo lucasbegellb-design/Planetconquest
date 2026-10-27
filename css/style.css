@@ -510,3 +510,31 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
   body.tuto-on .map-legend { top: calc(300px + var(--safe-t)); }
   body.panel-open .tuto { display: none; }
 }
+/* succès et cosmétiques */
+.tb-title { display: block; font-family: var(--ui); font-weight: 400; font-size: 11px; color: var(--accent2); margin-top: -2px; }
+.tb-country { line-height: 1.1; }
+.ach-tabs { grid-template-columns: 1fr 1fr; margin: 6px 0 8px; }
+.ach-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; margin-top: 10px; }
+.ach { display: grid; grid-template-columns: 40px 1fr; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(0, 0, 0, 0.2); opacity: 0.75; }
+.ach.done { opacity: 1; border-color: var(--accent); background: rgba(214, 168, 90, 0.08); }
+.ach-ic { font-size: 26px; text-align: center; line-height: 40px; }
+.ach .hint { font-size: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.chip { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.04); }
+.cos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; }
+.cos { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 6px; border-radius: 10px; border: 1px solid var(--line); background: rgba(0, 0, 0, 0.25); color: var(--text); cursor: pointer; font-family: var(--ui); font-size: 13px; }
+.cos.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.cos.locked { opacity: 0.45; cursor: not-allowed; }
+.cos small { font-size: 10px; color: var(--muted); text-align: center; }
+.cos .ic { font-size: 22px; }
+.cos .sw { width: 34px; height: 18px; border-radius: 5px; border: 1px solid rgba(255, 255, 255, 0.25); }
+.ach-toast { display: flex; gap: 10px; align-items: center; }
+.ach-toast .big { font-size: 30px; }
+/* thèmes d'interface (prioritaires sur les couleurs d'époque) */
+body[data-theme='ice'], body[data-theme='ice'][data-era] { --accent: #6cc8ff; --accent2: #c9ecff; }
+body[data-theme='ember'], body[data-theme='ember'][data-era] { --accent: #ff6a3d; --accent2: #ffc2a6; }
+body[data-theme='jade'], body[data-theme='jade'][data-era] { --accent: #3fcf8e; --accent2: #b9f2d6; }
+body[data-theme='amethyst'], body[data-theme='amethyst'][data-era] { --accent: #a47bff; --accent2: #dccbff; }
+body[data-theme='neon'], body[data-theme='neon'][data-era] { --accent: #ff4fd8; --accent2: #7ff3ff; --glow: 0 0 16px rgba(255, 79, 216, 0.35); }
+body[data-theme='obsidian'], body[data-theme='obsidian'][data-era] { --accent: #c9ccd6; --accent2: #ffffff; }
+@media (max-width: 760px) { .tb-title { display: none; } }

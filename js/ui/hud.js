@@ -3,6 +3,7 @@ import { bonusOf } from '../sim/match.js';
 import { MAP_MODES, legendHtml } from '../map/mapModes.js';
 import { settings } from './settings.js';
 import { statTip } from './stats.js';
+import { emblemIcon, titleText } from './cosmetics.js';
 import { SEASONS, CRISES, seasonOf } from '../sim/military.js';
 import { $, $$, esc, toast, openModal } from './dom.js';
 import { fmtBig, fmtPop, fmtInt, fmt1, fmtTime, rgbToCss } from '../core/util.js';
@@ -142,7 +143,8 @@ export class Hud {
     const st = P.st;
     const engaged = g.offTroops(g.playerId);
     const net = st.income - st.upkeep;
-    $('#tb-country').innerHTML = `<span class="swatch" style="background:${rgbToCss(P.color)}"></span>${esc(P.name)}`;
+    const tc = `<span class="swatch" style="background:${rgbToCss(P.color)}"></span>${emblemIcon() ? emblemIcon() + ' ' : ''}${esc(P.name)}${titleText() ? `<small class="tb-title">${esc(titleText())}</small>` : ''}`;
+    if (tc !== this.lastTc) { $('#tb-country').innerHTML = tc; this.lastTc = tc; }
     const n = g.cellsOf[g.playerId].size;
     const html = [
       `<div class="stat link" data-tip="pop" title="Population — cliquez pour le détail">👥 ${fmtPop(st.pop)}</div>`,

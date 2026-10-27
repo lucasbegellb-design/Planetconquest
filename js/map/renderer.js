@@ -172,6 +172,7 @@ export class Renderer {
     this.anims.set(e.cell, { cell: e.cell, to: e.to, order, n, start: this.time, dur: 0.5 + 0.25 * Math.sqrt(n / 900), done: 0 });
     const col = this.game.countries[e.to].color;
     this.rings.push({ x: cell.ax, y: cell.ay, color: col, age: 0, life: 0.9, r: 5 + Math.sqrt(cell.n) * 0.35 });
+    if (this.captureFx && e.to === this.game.playerId && !this.reduceMotion) this.conquestFx(cell, this.captureFx);
     this.frontCache.clear();
   }
   buildOrder(cell, to) {
@@ -307,6 +308,19 @@ export class Renderer {
   }
 
   // ---------- effets ----------
+  // effet de conquête cosmétique (débloqué par les succès) : particules colorées (k = 3)
+  conquestFx(cell, kind) {
+    const P = this.particles, x = cell.ax, y = cell.ay;
+    const pal = { gold: ['#ffd76a', '#fff1b0', '#e9b23c'], fireworks: ['#ff5e7a', '#5ee0ff', '#ffe066', '#9b7bff', '#6dff9a'], petals: ['#ffb7d5', '#ffd1e6', '#f48fb1'], flames: ['#ff7a1a', '#ffb347', '#ff3d1a'] }[kind];
+    if (!pal) return;
+    const n = kind === 'fireworks' ? 26 : 16;
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, v = (kind === 'petals' ? 6 : kind === 'flames' ? 8 : 14) + Math.random() * 14;
+      P.push({ k: 3, x, y, vx: Math.cos(a) * v, vy: kind === 'flames' ? -10 - Math.random() * 14 : Math.sin(a) * v - (kind === 'petals' ? 2 : 6), age: 0, life: 0.8 + Math.random() * (kind === 'petals' ? 1.2 : 0.6), css: pal[i % pal.length], r: kind === 'petals' ? 2.2 : 1.5 });
+    }
+    if (kind === 'fireworks') for (let k = 0; k < 2; k++) this.rings.push({ x, y, color: [255, 220 - k * 80, 120 + k * 100], age: 0, life: 1 + k * 0.4, r: 9 + k * 7 });
+  }
+
   explosion(x, y, scale = 1) {
     const Q = QUALITY[this.quality];
     if (this.particles.length > Q.particles) return;
@@ -503,6 +517,14 @@ export class Renderer {
       const r = Math.max(0.8, 1.3 * z * (1 - t));
       ctx.fillRect(p.x * s - r / 2, p.y * s - r / 2, r, r);
     }
+    for (const p of this.particles) {
+      if (p.k !== 3) continue;
+      const t = p.age / p.life;
+      ctx.globalAlpha = 1 - t * t;
+      ctx.fillStyle = p.css;
+      const r = Math.max(1, p.r * z * (1 - 0.5 * t));
+      ctx.fillRect(p.x * s - r / 2, p.y * s - r / 2, r, r);
+    }
     ctx.fillStyle = '#46464a';
     for (const p of this.particles) {
       if (p.k !== 2) continue;
@@ -557,7 +579,12 @@ export class Renderer {
       if (c.neutral || !c.alive || c.capital < 0) continue;
       if (g.cellsOf[c.id].size < 2 && s < 1.2) continue;
       const cl = cells[c.capital];
-      drawStar(ctx, cl.ax * s, cl.ay * s, size, c.isPlayer ? '#fff6c8' : 'rgba(255,255,255,0.85)', 'rgba(0,0,0,0.6)');
+      if (c.id === g.playerId && this.emblem) {
+        // emblème cosmétique à la place de l'étoile de la capitale
+        ctx.font = `${Math.round(clamp(10 * Math.sqrt(s), 13, 26))}px system-ui, sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(this.emblem, cl.ax * s, cl.ay * s);
+      } else drawStar(ctx, cl.ax * s, cl.ay * s, size, c.isPlayer ? '#fff6c8' : 'rgba(255,255,255,0.85)', 'rgba(0,0,0,0.6)');
     }
     // merveilles (toujours) et ressources (de près)
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';

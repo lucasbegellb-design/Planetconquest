@@ -76,6 +76,9 @@ Pour bien démarrer, un conseiller propose de temps en temps l'astuce la plus ut
 - **Réglages** : volume, intensité des vibrations, taille du texte, mode daltonien, animations réduites, pauses automatiques, conseiller.
 - **Tutoriel** des premières minutes (7 objectifs), rejouable depuis les réglages.
 
+### 🏅 Succès et cosmétiques
+27 succès conservés d'une partie à l'autre (premier sang, merveilles, pacifiste, maître espion, conquête en Impossible, voyage interstellaire, victoire multijoueur…). Chacun débloque des **cosmétiques**, sans effet sur le jeu : **emblèmes** (à côté de votre nom et sur votre capitale), **couleurs de pays**, **thèmes d'interface**, **effets de conquête** (étincelles d'or, feux d'artifice, pétales, flammes) et **titres** (affichés aussi dans le salon multijoueur). Accueil → 🏅 Succès, ou ☰ en partie.
+
 ### Commandes
 | Action | Souris / clavier | Tactile |
 |---|---|---|

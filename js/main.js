@@ -32,6 +32,8 @@ import { StatsRecorder, openStats } from './ui/stats.js';
 import { Tutorial } from './ui/tutorial.js';
 import { openSettings, applySettings } from './ui/settingsView.js';
 import { openSlots } from './ui/slots.js';
+import { AchievementTracker, openAchievements } from './ui/achievements.js';
+import { applyCosmetics, applyCountryColor } from './ui/cosmetics.js';
 import { settings } from './ui/settings.js';
 import { MAP_MODES } from './map/mapModes.js';
 import { openEmpireView, bindEmpireChange } from './ui/empireView.js';
@@ -62,6 +64,7 @@ class App {
       onHelp: () => openModal(HELP_HTML),
       onLoad: () => openSlots(this, 'load'),
       onSettings: () => openSettings(this),
+      onAchievements: () => openAchievements(this),
     });
     this.menu.setContinue(hasSave());
     this.hud = new Hud(this);
@@ -72,6 +75,8 @@ class App {
     this.alerts = new Alerts(this);
     this.stats = new StatsRecorder();
     this.tutorial = new Tutorial(this);
+    this.achievements = new AchievementTracker(this);
+    applyCosmetics(this);
     applySettings(this);
     settings.onChange(() => applySettings(this));
     bindEmpireChange(this);
@@ -381,6 +386,7 @@ class App {
     const s = this.setup.settings, map = this.map;
     const planet = this.homePlanet(this.setup.spec);
     const game = Game.create(map, { difficulty: s.difficulty, pace: s.pace, playerIndex: k, nAI: s.nAI, planet });
+    applyCountryColor(game);
     $('#pick').hidden = true;
     this.beginPlay(game, true);
     const P = game.countries[game.playerId];
@@ -435,6 +441,9 @@ class App {
     game.on('era', (e) => { if (e.id === pid) snd.chord(); });
     this.alerts.attach(game);
     this.tutorial.start(game);
+    this.achievements.attach(game, this.savedAch);
+    this.savedAch = null;
+    applyCosmetics(this);
     if (this.renderer) this.renderer.reduceMotion = !!settings.get('reduceMotion');
     if (!this.keepStats) this.stats.reset();
     this.keepStats = false;
@@ -487,6 +496,12 @@ class App {
     cam.flyTo(c0.cx + (minX + maxX) / 2, (minY + maxY) / 2, zoomIn ? z : cam.zoom, 1.1);
   }
 
+  // un cosmétique vient d'être équipé : la couleur s'applique tout de suite en solo
+  onCosmeticsChanged(cat) {
+    if (cat === 'color' && this.game && !this.multi.active && this.renderer && applyCountryColor(this.game)) this.renderer.fullRepaint();
+    this.hud.lastStats = '';
+  }
+
   // modes de carte
   setMapMode(mode) {
     this.mapMode = mode;
@@ -525,7 +540,9 @@ class App {
   // toutes les actions du joueur passent par ici (solo, hôte ou joueur distant)
   cmd(name, ...args) {
     if (this.multi.isClient) return this.multi.cmd(name, args);
-    return runCommand(this.game, this.game.playerId, name, args);
+    const r = runCommand(this.game, this.game.playerId, name, args);
+    this.achievements.onCommand(name, r);
+    return r;
   }
   get auto() {
     const g = this.game, P = g && g.countries[g.playerId];
@@ -608,6 +625,7 @@ class App {
         <button class="btn big" data-m="replay">🎬 Revoir l'histoire (timelapse)</button>
         <button class="btn big" data-m="rank">🏆 Classement mondial</button>
         <button class="btn big" data-m="stats">📈 Statistiques et graphiques</button>
+        <button class="btn big" data-m="ach">🏅 Succès et cosmétiques</button>
         <button class="btn big" data-m="log">📰 Fil d'actualité complet</button>
         <div class="two"><button class="btn" data-m="sound">${this.sound.on ? '🔊 Son activé' : '🔇 Son coupé'}</button><button class="btn" data-m="haptics">${this.sound.haptics ? '📳 Vibrations' : '📴 Sans vibration'}</button></div>
         ${document.fullscreenEnabled ? '<button class="btn big" data-m="fs">⛶ Plein écran</button>' : ''}
@@ -630,6 +648,7 @@ class App {
         case 'replay': closeModal(); this.replay.open(); break;
         case 'rank': closeModal(); this.hud.openRanking(); break;
         case 'stats': closeModal(); openStats(this); break;
+        case 'ach': closeModal(); openAchievements(this); break;
         case 'sound': this.sound.setSound(!this.sound.on); closeModal(); this.openGameMenu(); break;
         case 'haptics': this.sound.setHaptics(!this.sound.haptics); closeModal(); this.openGameMenu(); break;
         case 'fs': closeModal(); if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); break;
@@ -762,6 +781,7 @@ class App {
       difficulty: meta.difficulty || 'normal', pace: this.setup.settings.pace, planet: planetInfo(spec), landing: cell,
       meta: { name: meta.name, art: meta.art, title: meta.title, color: meta.color, techs: meta.techs, repeat: meta.repeat, perk: meta.perk, bonusGold: meta.bonusGold },
     });
+    applyCountryColor(game);
     $('#pick').hidden = true;
     this.speed = this.prevSpeed || 1;
     this.beginPlay(game, true);
@@ -775,7 +795,7 @@ class App {
     const base = { v: 1, savedAt: Date.now(), setup: this.setup, meta: this.meta, prefs: { pct: this.pct } };
     if (this.mode === 'play' && this.game) {
       const cam = this.renderer.cam;
-      return { ...base, phase: 'play', game: this.game.serialize(), stats: this.stats.data, view: { x: cam.x, y: cam.y, zoom: cam.zoom } };
+      return { ...base, phase: 'play', game: this.game.serialize(), stats: this.stats.data, ach: this.achievements.T, view: { x: cam.x, y: cam.y, zoom: cam.zoom } };
     }
     if (this.mode === 'space' && this.meta) return { ...base, phase: 'space', game: { owner: [] } };
     return null;
@@ -826,6 +846,7 @@ class App {
     catch (err) { console.error(err); toast('Sauvegarde corrompue.', 'err'); $('#menu').hidden = false; return; }
     this.speed = data.setup.settings.speed || 1;
     this.stats.reset(data.stats);
+    this.savedAch = data.ach || null;
     this.keepStats = true;
     this.beginPlay(game, false);
     if (data.view) { r.cam.x = data.view.x; r.cam.y = data.view.y; r.cam.zoom = data.view.zoom; r.cam.clamp(); }
@@ -994,6 +1015,7 @@ class App {
         if (T.mini > 0.3) { T.mini = 0; this.renderer.renderMinimap($('#minimap')); }
         if (!this.tutorial.active) this.advisor.tick(dt);
         this.stats.sample(this.game);
+        this.achievements.tick(dt);
         // ambiance sonore des combats du joueur
         if (this.speed > 0 && !paused && (T.boom -= dt) < 0) {
           const g = this.game, pid = g.playerId;

@@ -15,7 +15,7 @@ Jeu de stratégie 100 % statique (HTML/CSS/JS, modules ES natifs, zéro dépenda
 - `js/net/` — multijoueur hôte-autoritaire : `transport.js` (PeerJS CDN / BroadcastChannel `?net=local`), `mapsync.js` (hash + transfert carte), `multiplayer.js` (salon, ticks hôte → miroir client `Game.restore`).
 - `js/tech/` — `techtree.js` (3 branches mil/eco/pop × 5 ères, prérequis de branche, répétables), `buildings.js`.
 - `js/space/` — `progression.js` (méta, difficulté par niveau), `spaceView.js`.
-- `js/ui/` — `hud.js` (barre, fil, modes de carte, détail des chiffres), `panel.js`, `techView.js`, `empireView.js`, `alerts.js` (alertes groupées, pause auto), `stats.js` (relevés + graphiques + `statTip`), `slots.js`/`save.js` (sauvegardes), `settings.js` (préférences) + `settingsView.js`, `tutorial.js`, `advisor.js`, `replay.js`, `sound.js`, `menu.js`, `dom.js`.
+- `js/ui/` — `hud.js` (barre, fil, modes de carte, détail des chiffres), `panel.js`, `techView.js`, `empireView.js`, `alerts.js` (alertes groupées, pause auto), `stats.js` (relevés + graphiques + `statTip`), `slots.js`/`save.js` (sauvegardes), `settings.js` (préférences) + `settingsView.js`, `tutorial.js`, `achievements.js` (succès persistants, suivi en partie, fenêtre) + `cosmetics.js` (emblèmes, couleurs, thèmes `body[data-theme]`, effets `renderer.captureFx`, titres), `advisor.js`, `replay.js`, `sound.js`, `menu.js`, `dom.js`.
 - `js/map/mapModes.js` — teintes des modes de carte (`painter.tintOf`), légendes, palette daltonienne.
 
 ## Invariants

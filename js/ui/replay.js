@@ -19,6 +19,7 @@ export class Replay {
   }
 
   open(onClose) {
+    if (this.app.achievements) this.app.achievements.unlock('historian');
     const app = this.app, g = app.game, r = app.renderer;
     g.flushHist();
     app.select(-1);

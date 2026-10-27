@@ -41,6 +41,7 @@ export const HELP_HTML = `
     <li><b>Alertes</b> : touchez « 📍 Voir » (ou une actualité marquée 📍) pour aller sur place. La pause automatique se règle dans ☰ → Réglages.</li>
     <li><b>Modes de carte</b> (🗺️ ou M) : diplomatie, ressources, agitation, front. <b>Chiffres de la barre du haut</b> : touchez-les pour voir d'où ils viennent.</li>
     <li><b>👥 Multijoueur</b> (accueil) : créez une partie, partagez le code ; jusqu'à 6 joueurs, en chacun pour soi ou en 2 équipes alliées, avec un chrono. L'IA joue les autres pays. Score = territoires + objectifs (bouton 🎯) ; 💬 pour discuter.</li>
+    <li><b>🏅 Succès</b> : 27 défis qui débloquent emblèmes, couleurs, thèmes, effets de conquête et titres (accueil → 🏅 Succès, ou ☰ en partie).</li>
     <li><b>🧭 Conseiller</b> : des astuces selon votre situation, désactivables depuis le menu ☰.</li>
     <li><b>Rythme</b> (accueil) : en mode <i>Stratégique</i>, les guerres avancent plus lentement que l'économie, pour laisser le temps de planifier. <i>Classique</i> pour des parties plus nerveuses.</li>
     <li>La partie est sauvegardée automatiquement. Exportez-la en fichier depuis le menu ☰.</li>

@@ -8,6 +8,7 @@ import { pairKey } from '../sim/game.js';
 import { rgbToCss, fmtTime } from '../core/util.js';
 import { art } from '../core/fr.js';
 import { setupMatch, teamRanking, OBJECTIVES } from '../sim/match.js';
+import { titleText } from '../ui/cosmetics.js';
 
 const MAX_PLAYERS = 6;
 const EMOTES = ['👋', '😂', '😡', '🤝', '😱', '🔥', 'GG'];
@@ -38,7 +39,7 @@ export class Multi {
     this.t = makeTransport(settings.net);
     await this.t.start(this.code, true);
     this.me = 'host';
-    this.players.set('host', { id: 'host', name, k: -1, ready: true, team: 0 });
+    this.players.set('host', { id: 'host', name, k: -1, ready: true, team: 0, title: titleText() });
     this.t.on('join', () => {});
     this.t.on('message', (from, d) => this.onHostMsg(from, d));
     this.t.on('leave', (id) => this.onLeave(id));
@@ -54,7 +55,7 @@ export class Multi {
     this.t.on('message', (from, d) => this.onClientMsg(d));
     this.t.on('leave', (id) => { if (id === 'host') this.hostLost(); });
     this.t.on('error', (m) => toast('🌐 ' + esc(m), 'err', 4000));
-    this.t.send('host', { t: 'hello', name });
+    this.t.send('host', { t: 'hello', name, title: titleText() });
   }
 
   leave() {
@@ -69,7 +70,7 @@ export class Multi {
 
   // ---------- salon ----------
   lobbyState() {
-    return { t: 'lobby', settings: this.settings, code: this.code, players: [...this.players.values()].map((p) => ({ id: p.id, name: p.name, k: p.k, ready: p.ready, team: p.team })) };
+    return { t: 'lobby', settings: this.settings, code: this.code, players: [...this.players.values()].map((p) => ({ id: p.id, name: p.name, k: p.k, ready: p.ready, team: p.team, title: p.title })) };
   }
   broadcastLobby() {
     const s = this.lobbyState();
@@ -97,7 +98,7 @@ export class Multi {
       }
       if (this.players.size >= MAX_PLAYERS) { this.t.send(from, { t: 'kick', reason: 'La partie est complète.' }); return; }
       const n0 = [...this.players.values()].filter((q) => q.team === 0).length;
-      this.players.set(from, { id: from, name: String(d.name || 'Joueur').slice(0, 18), k: -1, ready: false, team: n0 > this.players.size - n0 ? 1 : 0 });
+      this.players.set(from, { id: from, name: String(d.name || 'Joueur').slice(0, 18), k: -1, ready: false, team: n0 > this.players.size - n0 ? 1 : 0, title: String(d.title || '').slice(0, 30) });
       toast(`👤 ${esc(this.players.get(from).name)} a rejoint la partie`, 'ok');
       this.broadcastLobby();
       return;
@@ -246,7 +247,7 @@ export class Multi {
       const tm = s.settings.teams ? TEAMS[p.team || 0] : null;
       const chip = tm ? `<button class="team-chip t${p.team || 0}" ${p.id === this.me ? 'data-switch' : 'disabled'} title="${p.id === this.me ? 'Changer d’équipe' : ''}">${tm.icon} ${tm.name}</button>` : '';
       return `<div class="lb-row">${chip}<span class="swatch" style="background:${c ? rgbToCss(c.color) : '#555'}"></span>
-        <b>${esc(p.name)}</b>${p.id === 'host' ? ' <small>(hôte)</small>' : ''}${p.id === this.me ? ' <small>(vous)</small>' : ''}
+        <b>${esc(p.name)}</b>${p.title ? ` <small class="hint">${esc(p.title)}</small>` : ''}${p.id === 'host' ? ' <small>(hôte)</small>' : ''}${p.id === this.me ? ' <small>(vous)</small>' : ''}
         <span class="hint">${c ? esc(c.name) : 'choisit son pays…'}${p.ready ? '' : ' · chargement'}</span></div>`;
     }).join('');
     const st = s.settings;
