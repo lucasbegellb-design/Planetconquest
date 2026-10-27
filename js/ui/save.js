@@ -28,3 +28,34 @@ export function exportFile(data) {
 export function validateSave(data) {
   return data && data.v === 1 && data.setup && data.setup.spec && data.game && Array.isArray(data.game.owner);
 }
+
+// ---------- emplacements de sauvegarde manuels ----------
+export const SLOTS = 4;
+const slotKey = (i) => `terra-conquest-slot-${i}`;
+const INDEX = 'terra-conquest-slots';
+export function listSlots() {
+  let idx = {};
+  try { idx = JSON.parse(localStorage.getItem(INDEX) || '{}'); } catch { idx = {}; }
+  return Array.from({ length: SLOTS }, (_, i) => idx[i + 1] || null);
+}
+// meta : { name, country, color, planet, t, cells, thumb }
+export function writeSlot(i, data, meta) {
+  try {
+    localStorage.setItem(slotKey(i), JSON.stringify(data));
+    const idx = JSON.parse(localStorage.getItem(INDEX) || '{}');
+    idx[i] = { ...meta, savedAt: Date.now() };
+    localStorage.setItem(INDEX, JSON.stringify(idx));
+    return true;
+  } catch { return false; }
+}
+export function readSlot(i) {
+  try { const s = localStorage.getItem(slotKey(i)); return s ? JSON.parse(s) : null; } catch { return null; }
+}
+export function deleteSlot(i) {
+  try {
+    localStorage.removeItem(slotKey(i));
+    const idx = JSON.parse(localStorage.getItem(INDEX) || '{}');
+    delete idx[i];
+    localStorage.setItem(INDEX, JSON.stringify(idx));
+  } catch { /* ignore */ }
+}

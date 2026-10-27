@@ -66,6 +66,16 @@ Pour bien démarrer, un conseiller propose de temps en temps l'astuce la plus ut
 - Avant chaque départ, choisissez un **héritage** (bonus permanent). Vos technologies et héritages sont conservés d'une planète à l'autre ; vous débarquez avec une force expéditionnaire sur le site de votre choix.
 - **Difficulté infinie** : chaque planète compte plus de territoires, plus de civilisations, plus avancées et plus riches. Après 6 systèmes, saut vers une nouvelle galaxie.
 
+### Confort de jeu
+- **Alertes** regroupées et cliquables (« 📍 Voir » centre la carte sur le front) ; **pause automatique** réglable (guerre déclarée, offensive, proposition, crise).
+- **Modes de carte** (🗺️ ou M) : diplomatie, ressources, agitation, front — avec légende.
+- **Statistiques** (S) : courbes de territoires, armée, revenu, recherche et population comparées aux grandes puissances.
+- **Détail des chiffres** : touchez l'or, l'armée, la recherche, le moral ou la population pour voir chaque bonus (régime, merveilles, ressources, commerce, crises…).
+- **Fil d'actualité filtrable** (vous, guerres, diplomatie, événements), **vitesse ×½**, nombreux **raccourcis clavier** (H pour la liste).
+- **Sauvegardes** : automatique + 4 emplacements avec aperçu, export/import en fichier.
+- **Réglages** : volume, intensité des vibrations, taille du texte, mode daltonien, animations réduites, pauses automatiques, conseiller.
+- **Tutoriel** des premières minutes (7 objectifs), rejouable depuis les réglages.
+
 ### Commandes
 | Action | Souris / clavier | Tactile |
 |---|---|---|
@@ -75,7 +85,11 @@ Pour bien démarrer, un conseiller propose de temps en temps l'astuce la plus ut
 | Agrandir / fermer le panneau | — | glisser la poignée vers le haut / le bas |
 | Déplacer la carte | glisser | glisser |
 | Zoomer | molette, double-clic | pincer |
-| Pause / vitesses | `Espace`, `1` `2` `3` | boutons ⏸ x1 x2 x4 |
+| Pause / vitesses | `Espace`, `0` (×½) `1` `2` `3`, `+` / `−` | boutons ⏸ ½ x1 x2 x4 |
+| Front suivant / capitale | `Tab` / `C` | 📍 dans les alertes |
+| Mode de carte | `M` | 🗺️ |
+| Empire / statistiques / fil / classement | `E` / `S` / `N` / `R` | 🏛️ / ☰ / fil / 🏆 |
+| Aide (liste des raccourcis) | `H` | ☰ → Comment jouer |
 | Technologies | `T` | 🔬 |
 | Recentrer sur votre pays | `F` ou clic sur votre nom | toucher votre nom |
 | Afficher/masquer les noms | `L` | menu ☰ |

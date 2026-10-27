@@ -1,6 +1,6 @@
 // Gestion de l'empire : ressources stratégiques, merveilles (uniques sur la planète) et formes de gouvernement.
 // Tout passe par les modificateurs du pays (c.mods), recalculés à chaque pas d'économie.
-import { TECH_BY_ID, ERAS } from '../tech/techtree.js';
+import { TECH_BY_ID, ERAS, techMods } from '../tech/techtree.js';
 import { Art, v } from '../core/fr.js';
 
 // ---------- ressources ----------
@@ -85,7 +85,7 @@ function wonderTick(g, dt) {
     if (j.left > 0) continue;
     c.job = null;
     g.wonders[j.wid] = { cell: c.capital >= 0 ? c.capital : [...g.cellsOf[c.id]][0], t: g.t };
-    g.say(`${w.icon} ${Art(c)} ${v(c, 'achève', 'achèvent')} la merveille « ${w.name} » !`, 'era', { imp: true, player: c.isPlayer });
+    g.say(`${w.icon} ${Art(c)} ${v(c, 'achève', 'achèvent')} la merveille « ${w.name} » !`, 'era', { imp: true, player: c.isPlayer, cell: g.wonders[j.wid].cell });
     g.emit('wonder', { id: c.id, wid: j.wid });
   }
 }
@@ -96,7 +96,7 @@ export function wonderCaptured(g, cell, a, d) {
     const s = g.wonders[w.id];
     if (s && s.cell === cell) {
       const A = g.countries[a];
-      g.say(`${w.icon} ${Art(A)} ${v(A, "s'empare", "s'emparent")} de la merveille « ${w.name} » !`, 'capture', { imp: true, player: g.involvesPlayer(a, d) });
+      g.say(`${w.icon} ${Art(A)} ${v(A, "s'empare", "s'emparent")} de la merveille « ${w.name} » !`, 'capture', { imp: true, player: g.involvesPlayer(a, d), cell });
     }
   }
 }
@@ -146,24 +146,39 @@ export function setGov(g, id, gid) {
 
 // ---------- modificateurs ----------
 // Ajoute à c.mods (déjà rempli par les technologies) les effets du gouvernement, des merveilles et des ressources
-export function structMods(g, c) {
+export function structMods(g, c, note = null) {
   const m = c.mods;
-  const add = (fx, f = 1) => { for (const k in fx) m[k] = (m[k] || 0) + fx[k] * f; };
+  const add = (fx, f = 1, label = '') => {
+    for (const k in fx) { m[k] = (m[k] || 0) + fx[k] * f; if (note) note(k, fx[k] * f, label); }
+  };
   m.morale = m.morale || 0;
-  add((GOV_BY_ID[c.gov] || GOV_BY_ID.tribe).fx);
-  for (const w of WONDERS) { const s = g.wonders[w.id]; if (s && g.owner[s.cell] === c.id) add(w.fx); }
+  const G = GOV_BY_ID[c.gov] || GOV_BY_ID.tribe;
+  add(G.fx, 1, `${G.icon} ${G.name}`);
+  for (const w of WONDERS) { const st = g.wonders[w.id]; if (st && g.owner[st.cell] === c.id) add(w.fx, 1, `${w.icon} ${w.name}`); }
   const n = c.resN;
   if (n) {
     let extra = 0;
     RESOURCES.forEach((r, i) => {
       if (!n[i] || (r.era && c.era < r.era)) return;
-      add(r.fx);
+      add(r.fx, 1, `${r.icon} ${r.name}`);
       extra += Math.min(4, n[i] - 1);
     });
-    m.eco += 0.01 * extra; // surplus échangé
+    if (extra) add({ eco: 0.01 * extra }, 1, '📦 Surplus de ressources'); // surplus échangé
   }
-  if (g.tradeN) m.eco += 0.06 * g.tradeN[c.id]; // accords commerciaux
-  for (const tid in NEEDS) if (c.techs.has(tid) && !hasRes(c, NEEDS[tid])) add(TECH_BY_ID[tid].fx, -0.5);
+  if (g.tradeN && g.tradeN[c.id]) add({ eco: 0.06 * g.tradeN[c.id] }, 1, `🚢 ${g.tradeN[c.id]} accord(s) commercial(aux)`);
+  for (const tid in NEEDS) if (c.techs.has(tid) && !hasRes(c, NEEDS[tid])) add(TECH_BY_ID[tid].fx, -0.5, `⚠️ ${TECH_BY_ID[tid].name} sans ${RESOURCES[RI[NEEDS[tid]]].name.toLowerCase()}`);
+}
+
+// Détail d'un modificateur (pour les infobulles) : [{ label, v }] — technologies, héritages, gouvernement, merveilles, ressources, commerce, effets temporaires
+export function explainMods(g, c, key) {
+  const out = [];
+  const tech = techMods(c.techs, c.repeat)[key] || 0;
+  if (tech) out.push({ label: '🔬 Technologies', v: tech });
+  if (c.perk && c.perk[key]) out.push({ label: '🌌 Héritages spatiaux', v: c.perk[key] });
+  const probe = { mods: {}, gov: c.gov, resN: c.resN, techs: c.techs, era: c.era, id: c.id };
+  structMods(g, probe, (k, v, label) => { if (k === key && v) out.push({ label, v }); });
+  for (const e of c.temp || []) if (e.k === key && e.until > g.t) out.push({ label: `⏳ Effet temporaire (${Math.ceil(e.until - g.t)} s)`, v: e.v, until: e.until });
+  return out;
 }
 
 // ---------- pas de temps ----------

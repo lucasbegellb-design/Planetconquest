@@ -9,10 +9,18 @@ export class Sound {
     this.haptics = p.haptics !== false;
     this.ctx = null;
     this.last = {};
+    this.vol = 0.5;
+    this.vibe = 1;
   }
   save() { try { localStorage.setItem(PREF, JSON.stringify({ sound: this.on, haptics: this.haptics })); } catch { /* ignore */ } }
   setSound(v) { this.on = v; this.save(); if (v) this.unlock(); }
   setHaptics(v) { this.haptics = v; this.save(); if (v) this.buzz(20); }
+  // volume des effets (0–1) et intensité des vibrations (durées multipliées)
+  setVolume(vol, vibe = 1) {
+    this.vol = vol;
+    this.vibe = vibe;
+    if (this.master) this.master.gain.value = vol;
+  }
 
   // Le navigateur exige un geste de l'utilisateur pour démarrer l'audio
   unlock() {
@@ -23,7 +31,7 @@ export class Sound {
       try {
         this.ctx = new AC();
         this.master = this.ctx.createGain();
-        this.master.gain.value = 0.5;
+        this.master.gain.value = this.vol;
         this.master.connect(this.ctx.destination);
         const len = this.ctx.sampleRate;
         this.noiseBuf = this.ctx.createBuffer(1, len, len);
@@ -78,6 +86,7 @@ export class Sound {
 
   buzz(p) {
     if (!this.haptics || typeof navigator === 'undefined' || !navigator.vibrate) return;
-    try { navigator.vibrate(p); } catch { /* ignore */ }
+    const f = this.vibe ?? 1;
+    try { navigator.vibrate(Array.isArray(p) ? p.map((x, i) => (i % 2 ? x : Math.round(x * f))) : Math.round(p * f)); } catch { /* ignore */ }
   }
 }

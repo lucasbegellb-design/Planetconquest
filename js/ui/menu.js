@@ -66,6 +66,8 @@ export function initMenu(h) {
   $('#btn-new').addEventListener('click', () => h.onNew(settings()));
   $('#btn-continue').addEventListener('click', () => h.onContinue());
   $('#btn-help').addEventListener('click', () => h.onHelp());
+  $('#btn-load').addEventListener('click', () => h.onLoad());
+  $('#btn-settings').addEventListener('click', () => h.onSettings());
   $('#btn-import').addEventListener('click', () => $('#import-file').click());
   $('#import-file').addEventListener('change', async (e) => {
     const f = e.target.files[0];

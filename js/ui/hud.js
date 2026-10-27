@@ -1,5 +1,8 @@
 // Barre supérieure, fil d'actualité, propositions diplomatiques, mini-carte.
 import { bonusOf } from '../sim/match.js';
+import { MAP_MODES, legendHtml } from '../map/mapModes.js';
+import { settings } from './settings.js';
+import { statTip } from './stats.js';
 import { SEASONS, CRISES, seasonOf } from '../sim/military.js';
 import { $, $$, esc, toast, openModal } from './dom.js';
 import { fmtBig, fmtPop, fmtInt, fmt1, fmtTime, rgbToCss } from '../core/util.js';
@@ -18,8 +21,18 @@ export class Hud {
     $('#btn-goals').addEventListener('click', () => app.openGoals());
     $('#btn-menu').addEventListener('click', () => app.openGameMenu());
     $('#tb-country').addEventListener('click', () => app.selectPlayer());
-    this.newsBox.addEventListener('click', () => this.openLog());
-    $('#tb-stats').addEventListener('click', (e) => { if (e.target.closest('[data-open="rank"]')) this.openRanking(); if (e.target.closest('[data-open="score"]')) this.app.multi.openScores(); });
+    this.newsBox.addEventListener('click', (e) => {
+      const it = e.target.closest('[data-cell]');
+      if (it) app.goToCell(+it.dataset.cell); else this.openLog();
+    });
+    this.logFilter = 'all';
+    $('#tb-stats').addEventListener('click', (e) => {
+      if (e.target.closest('[data-open="rank"]')) this.openRanking();
+      if (e.target.closest('[data-open="score"]')) this.app.multi.openScores();
+      const t = e.target.closest('[data-tip]');
+      if (t) this.toggleTip(t.dataset.tip, t);
+    });
+    document.addEventListener('pointerdown', (e) => { if (this.tipKey && !e.target.closest('#stat-tip,[data-tip]')) this.hideTip(); });
     const fab = $('#aim-pct');
     fab.addEventListener('click', () => {
       const P = [25, 50, 75, 100];
@@ -32,6 +45,15 @@ export class Hud {
           ? '⚔️ Part de l’armée engagée. Astuce : <b>clic droit glissé</b> depuis votre territoire vers une cible pour attaquer.'
           : '⚔️ Part de l’armée engagée. Astuce : <b>appui long</b> sur votre territoire puis <b>glissez</b> vers une cible.', '', 5000);
       }
+    });
+    // modes de carte
+    const mmb = $('#map-mode'), box = $('#map-modes');
+    mmb.addEventListener('click', () => { box.hidden = !box.hidden; if (!box.hidden) this.renderModes(); });
+    box.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-mode]');
+      if (!b) return;
+      app.setMapMode(b.dataset.mode);
+      box.hidden = true;
     });
     const mm = $('#minimap');
     let dragging = false;
@@ -51,6 +73,38 @@ export class Hud {
     $('#toasts').innerHTML = '';
     this.propToasts.clear();
     this.lastStats = '';
+    this.hideTip();
+  }
+
+  // détail d'un chiffre de la barre supérieure
+  toggleTip(key, el) {
+    if (this.tipKey === key) { this.hideTip(); return; }
+    this.tipKey = key;
+    const tip = $('#stat-tip'), r = el.getBoundingClientRect();
+    tip.style.left = Math.max(8, Math.min(innerWidth - 328, r.left)) + 'px';
+    tip.style.top = r.bottom + 6 + 'px';
+    tip.hidden = false;
+    this.tipHtml = '';
+    this.renderTip();
+  }
+  renderTip() {
+    const h = statTip(this.app, this.tipKey);
+    if (h !== this.tipHtml) { this.tipHtml = h; $('#stat-tip').innerHTML = h; }
+  }
+  hideTip() { this.tipKey = null; $('#stat-tip').hidden = true; }
+
+  renderModes() {
+    const cur = this.app.mapMode || 'pol';
+    $('#map-modes').innerHTML = MAP_MODES.map((m) => `<button class="btn ${m.id === cur ? 'on' : ''}" data-mode="${m.id}">${m.icon} ${m.name}</button>`).join('');
+  }
+  showLegend(mode) {
+    const lg = $('#map-legend'), m = MAP_MODES.find((x) => x.id === mode);
+    lg.hidden = mode === 'pol';
+    if (mode !== 'pol') lg.innerHTML = `<b>${m.icon} ${m.name}</b> <button class="btn small" data-mode-off>✕</button><div class="lg">${legendHtml(mode, settings.get('colorblind'))}</div>`;
+    const off = lg.querySelector('[data-mode-off]');
+    if (off) off.onclick = () => this.app.setMapMode('pol');
+    $('#map-mode').textContent = m ? m.icon : '🗺️';
+    $('#map-mode').classList.toggle('on', mode !== 'pol');
   }
 
   updateFab() { $('#aim-pct').textContent = `⚔️ ${this.app.pct} %`; }
@@ -91,11 +145,11 @@ export class Hud {
     $('#tb-country').innerHTML = `<span class="swatch" style="background:${rgbToCss(P.color)}"></span>${esc(P.name)}`;
     const n = g.cellsOf[g.playerId].size;
     const html = [
-      `<div class="stat" title="Population">👥 ${fmtPop(st.pop)}</div>`,
-      `<div class="stat" title="Armée en réserve / effectifs max${engaged ? ' — engagés au front : ' + fmtBig(engaged) : ''}">⚔️ ${fmtBig(P.army)}<small>/ ${fmtBig(st.armyCap)}</small>${engaged ? `<small>+${fmtBig(engaged)} au front</small>` : ''}</div>`,
-      `<div class="stat" title="Or (revenu net par seconde)">💰 ${fmtInt(P.gold)} <small class="${net >= 0 ? 'up' : 'down'}">${net >= 0 ? '+' : ''}${fmt1(net)}/s</small></div>`,
-      `<div class="stat" title="Points de recherche">🔬 ${fmtInt(P.rp)} <small class="up">+${fmt1(st.rp)}/s</small></div>`,
-      `<div class="stat" title="Moral">${P.morale > 60 ? '😊' : P.morale > 35 ? '😐' : '😟'} ${Math.round(P.morale)}</div>`,
+      `<div class="stat link" data-tip="pop" title="Population — cliquez pour le détail">👥 ${fmtPop(st.pop)}</div>`,
+      `<div class="stat link" data-tip="army" title="Armée en réserve / effectifs max${engaged ? ' — engagés au front : ' + fmtBig(engaged) : ''} — cliquez pour le détail">⚔️ ${fmtBig(P.army)}<small>/ ${fmtBig(st.armyCap)}</small>${engaged ? `<small>+${fmtBig(engaged)} au front</small>` : ''}</div>`,
+      `<div class="stat link" data-tip="gold" title="Or (revenu net par seconde) — cliquez pour le détail">💰 ${fmtInt(P.gold)} <small class="${net >= 0 ? 'up' : 'down'}">${net >= 0 ? '+' : ''}${fmt1(net)}/s</small></div>`,
+      `<div class="stat link" data-tip="rp" title="Points de recherche — cliquez pour le détail">🔬 ${fmtInt(P.rp)} <small class="up">+${fmt1(st.rp)}/s</small></div>`,
+      `<div class="stat link" data-tip="morale" title="Moral — cliquez pour le détail">${P.morale > 60 ? '😊' : P.morale > 35 ? '😐' : '😟'} ${Math.round(P.morale)}</div>`,
       `<div class="stat" title="Territoires contrôlés">🗺️ ${n}<small>/ ${g.nCells} (${Math.floor((n / g.nCells) * 100)} %)</small></div>`,
       `<div class="stat" title="Époque">🏛️ ${ERAS[P.era].name}</div>`,
       g.match && g.match.names
@@ -109,6 +163,7 @@ export class Hud {
     tt.textContent = `${se.icon} ${left >= 0 ? '⏳ ' + fmtTime(left) : fmtTime(g.t)}${cr ? ' ' + cr.icon : ''}`;
     tt.title = `${se.name} (hémisphère nord)${cr ? ` · ${cr.name} : ${cr.desc}, encore ${Math.ceil(g.crisis.until - g.t)} s` : ''}`;
     tt.classList.toggle('urgent', left >= 0 && left < 60);
+    if (this.tipKey) this.renderTip();
     // techno disponibles
     let afford = TECHS.filter((t) => canResearch(P.techs, P.era, t) && P.rp >= t.cost).length;
     if (P.era >= 4 && !TECHS.some((t) => canResearch(P.techs, P.era, t))) afford += REPEATABLES.filter((r) => P.rp >= repeatCost(r, P.repeat[r.id] || 0)).length;
@@ -136,6 +191,7 @@ export class Hud {
     el.className = 'news-item' + (item.player ? ' player' : '') + (item.imp ? ' imp' : '');
     el.dataset.t = performance.now();
     el.textContent = item.text;
+    if (item.cell !== undefined) { el.dataset.cell = item.cell; el.title = 'Voir sur la carte'; el.append(' 📍'); }
     this.newsBox.appendChild(el);
     while (this.newsBox.children.length > 4) this.newsBox.firstChild.remove();
   }
@@ -143,8 +199,22 @@ export class Hud {
   openLog() {
     const g = this.app.game;
     if (!g) return;
-    const items = g.news.slice().reverse().map((n) => `<div class="${n.player ? 'player' : ''}"><time>${fmtTime(n.t)}</time>${esc(n.text)}</div>`).join('');
-    openModal(`<h2>📰 Fil d'actualité</h2><div class="log">${items || '<p class="hint">Rien à signaler pour le moment.</p>'}</div>`, { narrow: true });
+    const F = [
+      ['all', 'Tout', () => true],
+      ['me', 'Vous', (n) => n.player],
+      ['war', '⚔️ Guerres', (n) => ['war', 'capture', 'annex', 'revolt'].includes(n.kind)],
+      ['dip', '🤝 Diplomatie', (n) => ['peace', 'alliance'].includes(n.kind)],
+      ['other', '✨ Événements', (n) => ['event', 'era', 'info', 'space', 'victory'].includes(n.kind)],
+    ];
+    const root = openModal('<h2>📰 Fil d\'actualité</h2><div class="tabs log-tabs"></div><div class="log"></div><p class="hint">📍 : cliquez pour voir le lieu sur la carte.</p>', { narrow: true });
+    const render = () => {
+      root.querySelector('.log-tabs').innerHTML = F.map(([k, l]) => `<button class="tab ${this.logFilter === k ? 'active' : ''}" data-f="${k}">${l}</button>`).join('');
+      const f = (F.find((x) => x[0] === this.logFilter) || F[0])[2];
+      const items = g.news.filter(f).reverse().map((n) => `<div class="${n.player ? 'player' : ''}${n.cell !== undefined ? ' go' : ''}" ${n.cell !== undefined ? `data-goto="${n.cell}"` : ''}><time>${fmtTime(n.t)}</time>${esc(n.text)}${n.cell !== undefined ? ' 📍' : ''}</div>`).join('');
+      root.querySelector('.log').innerHTML = items || '<p class="hint">Rien à signaler pour le moment.</p>';
+    };
+    root.addEventListener('click', (e) => { const t = e.target.closest('[data-f]'); if (t) { this.logFilter = t.dataset.f; render(); } });
+    render();
   }
 
   showProposal(p) {

@@ -107,7 +107,7 @@ function revolt(g, alive) {
     const msg = revived
       ? `🔥 Révolte ${en(D)} : ${art(R)} ${v(R, 'renaît de ses', 'renaissent de leurs')} cendres !`
       : `🔥 Révolte ${en(D)} : ${art(R)} ${v(R, 'proclame son', 'proclament leur')} indépendance !`;
-    g.say(msg, 'revolt', { player: D.isPlayer, imp: D.isPlayer || revived });
+    g.say(msg, 'revolt', { player: D.isPlayer, imp: D.isPlayer || revived, cell: seed });
   }
   g.emit('revolt', { id: R.id, from: D.id });
 }
@@ -170,7 +170,7 @@ function disaster(g, alive) {
   if (shout(g, D)) {
     const where = g.map.cells[center].region ? ` (${g.map.cells[center].region})` : '';
     const victims = lost >= 0.01 ? ` — ${fmtBig(lost * 1e6)} victimes` : '';
-    g.say(`${def.icon} ${def.label} ${en(D)}${where}${victims}.`, 'event', { player: D.isPlayer });
+    g.say(`${def.icon} ${def.label} ${en(D)}${where}${victims}.`, 'event', { player: D.isPlayer, cell: center });
   }
 }
 

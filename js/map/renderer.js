@@ -1,6 +1,7 @@
 // Rendu canvas : carte raster (1 drawImage / copie), animations de conquête pixel par pixel,
 // flèches d'offensive, explosions sur les fronts, étiquettes des pays, mini-carte.
 import { RESOURCES, WONDERS } from '../sim/empire.js';
+import { modeTint, modeSig } from './mapModes.js';
 import { MapPainter } from './paint.js';
 import { Camera } from './camera.js';
 import { wrapDx, clamp, rgbToCss, fmtBig, mixRgb } from '../core/util.js';
@@ -82,6 +83,24 @@ export class Renderer {
     p.isNeutral = neutralFn;
     p.playerId = -1;
     this.fullRepaint();
+  }
+
+  // mode de carte (politique, diplomatie, ressources, agitation, front)
+  setMapMode(mode, colorblind = false) {
+    this.mapMode = mode;
+    this.modeCb = colorblind;
+    this.painter.tintOf = this.game && !this.replayMode ? modeTint(mode, this.game, colorblind) : null;
+    this.modeKey = '';
+    this.modeT = 0;
+    this.fullRepaint();
+  }
+  // repeint la carte quand l'information affichée par le mode change
+  refreshMode(dt) {
+    if (!this.painter.tintOf || this.replayMode || !this.game) return;
+    if ((this.modeT = (this.modeT || 0) + dt) < 0.5) return;
+    this.modeT = 0;
+    const k = modeSig(this.mapMode, this.game);
+    if (k !== this.modeKey) { this.modeKey = k; this.fullRepaint(); }
   }
 
   fullRepaint() {
@@ -319,13 +338,14 @@ export class Renderer {
     this.cam.update(dt);
     if (this.game && !this.replayMode) {
       this.stepAnims();
-      this.spawnBattleFx(dt);
+      if (!this.reduceMotion) this.spawnBattleFx(dt);
       if (this.game.ownVer !== this.labelVer && this.time - this.labelT > 0.4) {
         this.labelVer = this.game.ownVer; this.labelT = this.time;
         this.computeLabels();
         this.frontCache.clear();
       }
     }
+    this.refreshMode(dt);
     this.flush();
     const ctx = this.ctx, cam = this.cam, s = cam.scale, dpr = this.dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

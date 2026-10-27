@@ -103,7 +103,7 @@ export function nuke(g, a, cell) {
   D.army *= 0.75;
   D.morale = Math.max(5, D.morale - 25);
   for (const o of g.offensives) if (o.d === d && o.cur === cell) o.troops *= 0.5;
-  g.say(`☢️ ${Art(A)} ${v(A, 'lance', 'lancent')} une bombe atomique sur ${art(D)} ! Le monde entier est horrifié.`, 'war', { imp: true, player: g.involvesPlayer(a, d) });
+  g.say(`☢️ ${Art(A)} ${v(A, 'lance', 'lancent')} une bombe atomique sur ${art(D)} ! Le monde entier est horrifié.`, 'war', { imp: true, player: g.involvesPlayer(a, d), cell });
   // indignation mondiale : relations effondrées, coalition des voisins
   let joined = 0;
   for (const c of g.countries) {

@@ -27,6 +27,9 @@ export class MapPainter {
     this.playerId = -1;
     this.selCountry = -1;
     this.selCell = -1;
+    // mode de carte : (cellule, propriétaire) -> [r, g, b] ou null (couleur politique)
+    this.tintOf = null;
+    this._cell = -1;
   }
 
   paintWater() {
@@ -54,7 +57,10 @@ export class MapPainter {
   _base(p, owner, out) {
     const t = this.biomeRGB[this.map.biome[p]];
     const s = 0.8 + 0.4 * (this.map.shade[p] / 255);
-    if (this.isNeutral(owner)) {
+    const tint = this.tintOf && this.tintOf(this._cell, owner);
+    if (tint) {
+      out[0] = (tint[0] * 0.86 + t[0] * 0.14) * s; out[1] = (tint[1] * 0.86 + t[1] * 0.14) * s; out[2] = (tint[2] * 0.86 + t[2] * 0.14) * s;
+    } else if (this.isNeutral(owner)) {
       out[0] = (t[0] * 0.8 + 40) * s; out[1] = (t[1] * 0.8 + 38) * s; out[2] = (t[2] * 0.8 + 34) * s;
     } else {
       const c = this.colorOf(owner);
@@ -73,6 +79,7 @@ export class MapPainter {
     const buf = this.buf, W = this.map.W;
     const px = cell.px, c = [0, 0, 0];
     const hatch = id === this.selCell;
+    this._cell = id;
     for (let i = 0; i < px.length; i++) {
       const p = px[i];
       this._base(p, owner, c);
@@ -90,6 +97,7 @@ export class MapPainter {
     const owner = ownerOverride ?? this.ownerOf(id);
     const buf = this.buf, edge = cell.edge, nbr = cell.edgeNbr;
     const c = [0, 0, 0];
+    this._cell = id;
     const meP = owner === this.playerId;
     for (let i = 0; i < edge.length; i++) {
       const p = edge[i], nb = nbr[i];

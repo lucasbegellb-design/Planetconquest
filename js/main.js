@@ -27,6 +27,13 @@ import { Multi } from './net/multiplayer.js';
 import { mapHash } from './net/mapsync.js';
 import { runCommand } from './sim/commands.js';
 import { Advisor } from './ui/advisor.js';
+import { Alerts } from './ui/alerts.js';
+import { StatsRecorder, openStats } from './ui/stats.js';
+import { Tutorial } from './ui/tutorial.js';
+import { openSettings, applySettings } from './ui/settingsView.js';
+import { openSlots } from './ui/slots.js';
+import { settings } from './ui/settings.js';
+import { MAP_MODES } from './map/mapModes.js';
 import { openEmpireView, bindEmpireChange } from './ui/empireView.js';
 
 class App {
@@ -53,6 +60,8 @@ class App {
       onContinue: () => this.continueGame(),
       onImport: (txt) => this.importSave(txt),
       onHelp: () => openModal(HELP_HTML),
+      onLoad: () => openSlots(this, 'load'),
+      onSettings: () => openSettings(this),
     });
     this.menu.setContinue(hasSave());
     this.hud = new Hud(this);
@@ -60,6 +69,11 @@ class App {
     this.space = new SpaceView(this);
     this.replay = new Replay(this);
     this.advisor = new Advisor(this);
+    this.alerts = new Alerts(this);
+    this.stats = new StatsRecorder();
+    this.tutorial = new Tutorial(this);
+    applySettings(this);
+    settings.onChange(() => applySettings(this));
     bindEmpireChange(this);
     this.multi = new Multi(this);
     $('#btn-multi').addEventListener('click', () => this.mpOpen());
@@ -184,8 +198,20 @@ class App {
       return;
     }
     if (this.mode !== 'play' || modalOpen()) return;
+    const SP = [0.5, 1, 2, 4];
     if (e.key === ' ') { e.preventDefault(); this.setSpeed(this.speed > 0 ? 0 : this.prevSpeed || 1); }
-    else if (e.key >= '1' && e.key <= '4') this.setSpeed([1, 2, 4, 4][+e.key - 1]);
+    else if (e.key >= '1' && e.key <= '3') this.setSpeed([1, 2, 4][+e.key - 1]);
+    else if (e.key === '0') this.setSpeed(0.5);
+    else if (e.key === '-' || e.key === '+' || e.key === '=') {
+      const i = Math.max(0, SP.indexOf(this.speed > 0 ? this.speed : this.prevSpeed || 1));
+      this.setSpeed(SP[Math.min(SP.length - 1, Math.max(0, i + (e.key === '-' ? -1 : 1)))]);
+    } else if (e.key === 'Tab') { e.preventDefault(); this.cycleFront(e.shiftKey ? -1 : 1); }
+    else if (e.key === 'c' || e.key === 'C') this.selectPlayer();
+    else if (e.key === 'm' || e.key === 'M') this.cycleMapMode();
+    else if (e.key === 's' || e.key === 'S') openStats(this);
+    else if (e.key === 'n' || e.key === 'N') this.hud.openLog();
+    else if (e.key === 'r' || e.key === 'R') this.hud.openRanking();
+    else if (e.key === '?' || e.key === 'h' || e.key === 'H') openModal(HELP_HTML);
     else if (e.key === 't' || e.key === 'T') this.openTech();
     else if (e.key === 'e' || e.key === 'E') this.openEmpire();
     else if (e.key === 'f' || e.key === 'F') this.focusPlayer(false);
@@ -407,7 +433,12 @@ class App {
     game.on('eliminated', (e) => { if (e.by === pid) snd.fanfare(); });
     game.on('war', (w) => { if (w.b === pid) snd.horn(); });
     game.on('era', (e) => { if (e.id === pid) snd.chord(); });
-    game.on('war', (w) => { if (w.b === game.playerId) toast(`⚔️ ${esc(Art(game.countries[w.a]))} ${v(game.countries[w.a], 'vous déclare', 'vous déclarent')} la guerre !`, 'err', 4000); });
+    this.alerts.attach(game);
+    this.tutorial.start(game);
+    if (this.renderer) this.renderer.reduceMotion = !!settings.get('reduceMotion');
+    if (!this.keepStats) this.stats.reset();
+    this.keepStats = false;
+    this.setMapMode(this.mapMode || 'pol');
     this.hud.reset();
     $('#hud').hidden = false;
     this.panel.hide();
@@ -454,6 +485,34 @@ class App {
     const cam = r.cam;
     const z = clamp(Math.min(cam.cw / (bw * 3.2), cam.ch / (bh * 3.2)) / cam.base, cam.minZoom, cam.maxZoom * 0.6);
     cam.flyTo(c0.cx + (minX + maxX) / 2, (minY + maxY) / 2, zoomIn ? z : cam.zoom, 1.1);
+  }
+
+  // modes de carte
+  setMapMode(mode) {
+    this.mapMode = mode;
+    if (this.renderer) this.renderer.setMapMode(mode, settings.get('colorblind'));
+    this.hud.showLegend(mode);
+  }
+  cycleMapMode() {
+    const i = MAP_MODES.findIndex((m) => m.id === (this.mapMode || 'pol'));
+    this.setMapMode(MAP_MODES[(i + 1) % MAP_MODES.length].id);
+  }
+
+  // centre la carte sur un territoire et le sélectionne (alertes, fil d'actualité)
+  goToCell(cell) {
+    if (!this.game || !this.renderer || cell < 0 || cell >= this.map.cells.length) return;
+    if (modalOpen()) closeModal();
+    const c = this.map.cells[cell], cam = this.renderer.cam;
+    cam.flyTo(c.cx, c.cy, Math.max(cam.zoom, 2.2), 0.7);
+    this.select(cell);
+  }
+  // Tab : passe d'un front à l'autre (vos offensives, puis celles qui vous visent)
+  cycleFront(dir) {
+    const g = this.game, pid = g.playerId;
+    const list = g.offensives.filter((o) => o.a === pid).concat(g.offensives.filter((o) => o.d === pid)).filter((o) => o.cur >= 0);
+    if (!list.length) { toast('Aucun front actif.', '', 1500); return; }
+    this.frontIdx = ((this.frontIdx ?? -1) + dir + list.length) % list.length;
+    this.goToCell(list[this.frontIdx].cur);
   }
 
   select(cell) {
@@ -544,15 +603,17 @@ class App {
       <h2>☰ Menu</h2>
       <div class="actions" style="margin-top:12px">
         <button class="btn big" data-m="resume">▶️ Reprendre</button>
-        <button class="btn big" data-m="save">💾 Sauvegarder</button>
+        <button class="btn big" data-m="save">💾 Sauvegarder…</button>
         <button class="btn big" data-m="export">📤 Exporter la sauvegarde (.json)</button>
         <button class="btn big" data-m="replay">🎬 Revoir l'histoire (timelapse)</button>
         <button class="btn big" data-m="rank">🏆 Classement mondial</button>
+        <button class="btn big" data-m="stats">📈 Statistiques et graphiques</button>
         <button class="btn big" data-m="log">📰 Fil d'actualité complet</button>
         <div class="two"><button class="btn" data-m="sound">${this.sound.on ? '🔊 Son activé' : '🔇 Son coupé'}</button><button class="btn" data-m="haptics">${this.sound.haptics ? '📳 Vibrations' : '📴 Sans vibration'}</button></div>
         ${document.fullscreenEnabled ? '<button class="btn big" data-m="fs">⛶ Plein écran</button>' : ''}
         <button class="btn big" data-m="labels">🏷️ ${this.renderer.showLabels ? 'Masquer' : 'Afficher'} les noms</button>
         <button class="btn big" data-m="advisor">🧭 Conseiller : ${this.advisor.on ? 'activé' : 'désactivé'}</button>
+        <button class="btn big" data-m="settings">⚙️ Réglages</button>
         <button class="btn big" data-m="help">❓ Comment jouer</button>
         <button class="btn big danger" data-m="quit">🏠 Quitter vers l'accueil</button>
       </div>
@@ -562,11 +623,13 @@ class App {
       if (!m) return;
       switch (m.dataset.m) {
         case 'resume': closeModal(); break;
-        case 'save': { const ok = this.autosave(); toast(ok ? '💾 Partie sauvegardée' : 'Sauvegarde impossible (stockage indisponible)', ok ? 'ok' : 'err'); closeModal(); break; }
+        case 'save': this.autosave(); openSlots(this, 'save'); break;
+        case 'settings': openSettings(this); break;
         case 'export': exportFile(this.makeSave()); break;
         case 'log': closeModal(); this.hud.openLog(); break;
         case 'replay': closeModal(); this.replay.open(); break;
         case 'rank': closeModal(); this.hud.openRanking(); break;
+        case 'stats': closeModal(); openStats(this); break;
         case 'sound': this.sound.setSound(!this.sound.on); closeModal(); this.openGameMenu(); break;
         case 'haptics': this.sound.setHaptics(!this.sound.haptics); closeModal(); this.openGameMenu(); break;
         case 'fs': closeModal(); if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); break;
@@ -712,14 +775,24 @@ class App {
     const base = { v: 1, savedAt: Date.now(), setup: this.setup, meta: this.meta, prefs: { pct: this.pct } };
     if (this.mode === 'play' && this.game) {
       const cam = this.renderer.cam;
-      return { ...base, phase: 'play', game: this.game.serialize(), view: { x: cam.x, y: cam.y, zoom: cam.zoom } };
+      return { ...base, phase: 'play', game: this.game.serialize(), stats: this.stats.data, view: { x: cam.x, y: cam.y, zoom: cam.zoom } };
     }
     if (this.mode === 'space' && this.meta) return { ...base, phase: 'space', game: { owner: [] } };
     return null;
   }
+  // description d'une sauvegarde (nom, pays, aperçu de la mini-carte)
+  slotMeta() {
+    const g = this.game;
+    if (!g || this.mode !== 'play') return { name: 'Voyage spatial', planet: this.meta ? 'Système solaire' : '' };
+    const P = g.countries[g.playerId];
+    let thumb = '';
+    try { thumb = $('#minimap').toDataURL('image/jpeg', 0.6); } catch { /* ignore */ }
+    return { name: `${P.name} — ${g.planet.name}`, country: P.name, color: P.color, planet: g.planet.name, t: g.t, cells: g.cellsOf[P.id].size, thumb };
+  }
   autosave() {
     const data = this.makeSave();
     if (!data || (this.game && this.game.over)) return false;
+    data.slotMeta = this.slotMeta();
     const ok = writeSave(data);
     this.menu.setContinue(true);
     return ok;
@@ -752,6 +825,8 @@ class App {
     try { game = Game.restore(map, { difficulty: data.setup.settings.difficulty, planet }, data.game); }
     catch (err) { console.error(err); toast('Sauvegarde corrompue.', 'err'); $('#menu').hidden = false; return; }
     this.speed = data.setup.settings.speed || 1;
+    this.stats.reset(data.stats);
+    this.keepStats = true;
     this.beginPlay(game, false);
     if (data.view) { r.cam.x = data.view.x; r.cam.y = data.view.y; r.cam.zoom = data.view.zoom; r.cam.clamp(); }
     toast('Partie chargée.', 'ok', 1500);
@@ -764,6 +839,7 @@ class App {
     this.mode = 'menu';
     this.game = null;
     this.advisor.hide();
+    this.tutorial.hide();
     this.renderer = null;
     $('#hud').hidden = true;
     $('#pick').hidden = true;
@@ -913,10 +989,11 @@ class App {
       if (this.mode === 'play' && this.game) {
         const T = this.timers;
         T.hud += dt; T.panel += dt; T.mini += dt; T.save += dt;
-        if (T.hud > 0.25) { T.hud = 0; this.hud.update(); }
+        if (T.hud > 0.25) { T.hud = 0; this.hud.update(); this.tutorial.tick(); }
         if (T.panel > 0.5) { T.panel = 0; if (this.sel.cell >= 0) this.panel.render(); }
         if (T.mini > 0.3) { T.mini = 0; this.renderer.renderMinimap($('#minimap')); }
-        this.advisor.tick(dt);
+        if (!this.tutorial.active) this.advisor.tick(dt);
+        this.stats.sample(this.game);
         // ambiance sonore des combats du joueur
         if (this.speed > 0 && !paused && (T.boom -= dt) < 0) {
           const g = this.game, pid = g.playerId;

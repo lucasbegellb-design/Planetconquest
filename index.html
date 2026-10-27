@@ -78,8 +78,10 @@
         <button id="btn-continue" class="btn big" hidden>Continuer</button>
         <button id="btn-multi" class="btn big">👥 Multijoueur</button>
         <div class="inline small-actions">
-          <button id="btn-import" class="btn ghost">📂 Importer une sauvegarde</button>
-          <button id="btn-help" class="btn ghost">❓ Comment jouer</button>
+          <button id="btn-load" class="btn ghost">📂 Charger</button>
+          <button id="btn-import" class="btn ghost">📥 Importer</button>
+          <button id="btn-settings" class="btn ghost">⚙️ Réglages</button>
+          <button id="btn-help" class="btn ghost">❓ Aide</button>
         </div>
         <input id="import-file" type="file" accept=".json,application/json" hidden>
       </div>
@@ -116,6 +118,7 @@
         <div id="tb-time" class="tb-time"></div>
         <div class="speed" id="speed">
           <button data-speed="0" title="Pause (Espace)">⏸</button>
+          <button data-speed="0.5" title="Vitesse ×½ (0)">½</button>
           <button data-speed="1" title="Vitesse x1">x1</button>
           <button data-speed="2" title="Vitesse x2">x2</button>
           <button data-speed="4" title="Vitesse x4">x4</button>
@@ -131,6 +134,11 @@
     <div id="news" class="news"></div>
     <canvas id="minimap" width="240" height="94"></canvas>
     <button id="aim-pct" class="fab" title="Part de l'armée engagée par attaque">⚔️ 50 %</button>
+    <button id="map-mode" class="fab fab2" title="Modes de carte (M)">🗺️</button>
+    <div id="map-modes" class="map-modes" hidden></div>
+    <div id="map-legend" class="map-legend" hidden></div>
+    <div id="stat-tip" class="stat-tip" hidden></div>
+    <div id="tuto" class="tuto" hidden></div>
     <div id="toasts" class="toasts"></div>
     <div id="advisor" class="advisor" hidden></div>
   </section>

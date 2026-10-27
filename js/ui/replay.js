@@ -36,6 +36,7 @@ export class Replay {
     r.replayMode = true;
     r.anims.clear(); r.pending.length = 0; r.particles.length = 0; r.rings.length = 0;
     r.painter.ownerOf = (id) => this.owner[id];
+    this.tint = r.painter.tintOf; r.painter.tintOf = null; // le film montre toujours la carte politique
     r.fullRepaint();
     r.computeLabelsFrom(this.owner, g.countries);
     app.fitWorld(r);
@@ -139,6 +140,7 @@ export class Replay {
     const app = this.app, g = this.g, r = this.r;
     r.replayMode = false;
     r.painter.ownerOf = (id) => g.owner[id];
+    r.painter.tintOf = this.tint || null;
     r.rings.length = 0;
     r.fullRepaint();
     r.labelVer = -1;

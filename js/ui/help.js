@@ -37,7 +37,9 @@ export const HELP_HTML = `
   <h3>🎮 Commandes</h3>
   <ul>
     <li><b>Souris</b> : clic = sélection, glisser = déplacer, molette = zoom. <b>Tactile</b> : toucher, glisser, pincer.</li>
-    <li><b>Espace</b> pause · <b>1-4</b> vitesse · <b>T</b> technologies · <b>E</b> empire · <b>Échap</b> menu · <b>F</b> recentrer sur votre pays.</li>
+    <li><b>Raccourcis</b> : <b>Espace</b> pause · <b>1 2 3</b> vitesse ×1/×2/×4 · <b>0</b> ×½ · <b>+ / −</b> plus vite / moins vite · <b>Tab</b> front suivant · <b>C</b> capitale · <b>F</b> recentrer · <b>M</b> mode de carte · <b>T</b> technologies · <b>E</b> empire · <b>S</b> statistiques · <b>N</b> fil d'actualité · <b>R</b> classement · <b>L</b> noms · <b>H</b> aide · <b>Échap</b> menu.</li>
+    <li><b>Alertes</b> : touchez « 📍 Voir » (ou une actualité marquée 📍) pour aller sur place. La pause automatique se règle dans ☰ → Réglages.</li>
+    <li><b>Modes de carte</b> (🗺️ ou M) : diplomatie, ressources, agitation, front. <b>Chiffres de la barre du haut</b> : touchez-les pour voir d'où ils viennent.</li>
     <li><b>👥 Multijoueur</b> (accueil) : créez une partie, partagez le code ; jusqu'à 6 joueurs, en chacun pour soi ou en 2 équipes alliées, avec un chrono. L'IA joue les autres pays. Score = territoires + objectifs (bouton 🎯) ; 💬 pour discuter.</li>
     <li><b>🧭 Conseiller</b> : des astuces selon votre situation, désactivables depuis le menu ☰.</li>
     <li><b>Rythme</b> (accueil) : en mode <i>Stratégique</i>, les guerres avancent plus lentement que l'économie, pour laisser le temps de planifier. <i>Classique</i> pour des parties plus nerveuses.</li>

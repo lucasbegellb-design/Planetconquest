@@ -76,6 +76,7 @@ export class Game {
   say(text, kind = 'info', opts = {}) {
     const item = { t: this.t, text, kind, player: !!opts.player, imp: !!opts.imp };
     if (opts.to !== undefined) item.to = opts.to; // message privé (multijoueur)
+    if (opts.cell !== undefined && opts.cell >= 0) item.cell = opts.cell; // lieu (clic → la carte s'y rend)
     this.news.push(item);
     if (this.news.length > 250) this.news.splice(0, this.news.length - 250);
     this.emit('news', item);
@@ -459,6 +460,11 @@ export class Game {
   allied(a, b) { return this.alliances.has(pairKey(a, b)); }
   inTruce(a, b) { const u = this.truces.get(pairKey(a, b)); return u !== undefined && u > this.t; }
   warCount(id) { let n = 0; for (const w of this.wars.values()) if (w.a === id || w.b === id) n++; return n; }
+  // un territoire de `b` au contact de `a` (sinon sa capitale)
+  borderCell(b, a) {
+    for (const c of this.cellsOf[b]) for (const nb of this.map.cells[c].nbrs) if (this.owner[nb] === a) return c;
+    return this.countries[b] ? this.countries[b].capital : -1;
+  }
   enemiesOf(id) { const out = []; for (const w of this.wars.values()) { if (w.a === id) out.push(w.b); else if (w.b === id) out.push(w.a); } return out; }
   alliesOf(id) {
     const out = [];
@@ -491,7 +497,7 @@ export class Game {
     // réputation : les voisins de la victime se méfient d'un joueur belliqueux
     if (A.isPlayer && this.landN[b]) for (const n of this.landN[b].keys()) if (n !== a && !this.countries[n].neutral) this.addRel(a, n, -4);
     if (this.involvesPlayer(a, b) || this.isNearPlayer(a) || this.isNearPlayer(b) || (this.notable(a) && this.notable(b))) {
-      this.say(`⚔️ ${Art(A)} ${v(A, 'déclare', 'déclarent')} la guerre ${aFr(B)} !`, 'war', { player: this.involvesPlayer(a, b), imp: this.involvesPlayer(a, b) });
+      this.say(`⚔️ ${Art(A)} ${v(A, 'déclare', 'déclarent')} la guerre ${aFr(B)} !`, 'war', { player: this.involvesPlayer(a, b), imp: this.involvesPlayer(a, b), cell: this.borderCell(b, a) });
     }
     for (const vas of vassalsOf(this, a)) if (vas !== b && !this.allied(vas, b)) this._setWar(vas, b);
     for (const ally of this.alliesOf(b)) {
@@ -711,7 +717,7 @@ export class Game {
         this._relocateCapital(D);
         D.morale = Math.max(5, D.morale - 10);
         if (this.involvesPlayer(a, d) || this.notable(d)) {
-          this.say(`🏰 ${Art(A)} ${v(A, "s'empare", "s'emparent")} de la capitale ${de(D)} !`, 'capture', { player: this.involvesPlayer(a, d), imp: true });
+          this.say(`🏰 ${Art(A)} ${v(A, "s'empare", "s'emparent")} de la capitale ${de(D)} !`, 'capture', { player: this.involvesPlayer(a, d), imp: true, cell });
         }
       }
     }
