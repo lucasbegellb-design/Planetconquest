@@ -5,6 +5,16 @@
 
 const PEERJS_URL = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/+esm';
 const PREFIX = 'terraconquest-';
+const CHUNK = 16000; // taille de morceau sûre pour tous les navigateurs (canal WebRTC)
+
+// Messages en JSON texte (sérialisation « raw » de PeerJS) ; les gros messages sont découpés : « ~id:i:n:morceau »
+function frames(d, ref) {
+  const s = JSON.stringify(d);
+  if (s.length <= CHUNK) return [s];
+  const id = ++ref.n, n = Math.ceil(s.length / CHUNK), out = [];
+  for (let i = 0; i < n; i++) out.push(`~${id}:${i}:${n}:` + s.slice(i * CHUNK, (i + 1) * CHUNK));
+  return out;
+}
 
 class Emitter {
   constructor() { this.ls = {}; }
@@ -68,6 +78,9 @@ export class PeerTransport extends Emitter {
     const { Peer } = await import(PEERJS_URL);
     this.host = asHost;
     this.conns = new Map();
+    this.seen = new Map(); // id -> dernier signe de vie (WebRTC détecte mal les fermetures brutales)
+    this.parts = new Map(); // id -> message découpé en cours de réception
+    this.ref = { n: 0 };
     const peer = asHost ? new Peer(PREFIX + code) : new Peer();
     this.peer = peer;
     await new Promise((res, rej) => {
@@ -79,7 +92,7 @@ export class PeerTransport extends Emitter {
       this.id = 'host';
       peer.on('connection', (conn) => this._bind(conn, conn.peer));
     } else {
-      const conn = peer.connect(PREFIX + code, { reliable: true });
+      const conn = peer.connect(PREFIX + code, { reliable: true, serialization: 'raw' });
       await new Promise((res, rej) => {
         conn.on('open', res);
         conn.on('error', () => rej(new Error('Partie introuvable')));
@@ -88,17 +101,47 @@ export class PeerTransport extends Emitter {
       this.id = peer.id;
       this._bind(conn, 'host');
     }
+    this.beat = setInterval(() => {
+      const now = Date.now();
+      for (const [id, c] of this.conns) {
+        if (now - (this.seen.get(id) || now) > 12000) { this._drop(id); try { c.close(); } catch { /* ignore */ } continue; }
+        if (c.open) c.send('p');
+      }
+    }, 2000);
     return this.id;
   }
   _bind(conn, id) {
-    const ready = () => { this.conns.set(id, conn); if (this.host) this.emit('join', id); };
+    const ready = () => { this.conns.set(id, conn); this.seen.set(id, Date.now()); if (this.host) this.emit('join', id); };
     if (conn.open) ready(); else conn.on('open', ready);
-    conn.on('data', (d) => this.emit('message', id, d));
-    conn.on('close', () => { if (this.conns.delete(id)) this.emit('leave', id); });
+    conn.on('data', (raw) => {
+      if (this.conns.get(id) !== conn || typeof raw !== 'string') return;
+      this.seen.set(id, Date.now());
+      if (raw === 'p') return;
+      let s = raw;
+      if (raw[0] === '~') {
+        const m = /^~(\d+):(\d+):(\d+):/.exec(raw);
+        if (!m) return;
+        let st = this.parts.get(id);
+        if (!st || st.id !== m[1]) this.parts.set(id, (st = { id: m[1], got: [] }));
+        st.got[+m[2]] = raw.slice(m[0].length);
+        if (+m[2] < +m[3] - 1) return;
+        this.parts.delete(id);
+        s = st.got.join('');
+      }
+      let d;
+      try { d = JSON.parse(s); } catch { return; }
+      this.emit('message', id, d);
+    });
+    conn.on('close', () => { if (this.conns.get(id) === conn) this._drop(id); });
   }
-  send(to, d) { const c = this.conns.get(to); if (c && c.open) c.send(d); }
-  broadcast(d) { for (const c of this.conns.values()) if (c.open) c.send(d); }
-  close() { if (this.peer) { this.peer.destroy(); this.peer = null; } }
+  _drop(id) { this.seen.delete(id); this.parts.delete(id); if (this.conns.delete(id)) this.emit('leave', id); }
+  send(to, d) { const c = this.conns.get(to); if (c && c.open) for (const f of frames(d, this.ref)) c.send(f); }
+  broadcast(d) {
+    if (!this.conns.size) return;
+    const fs = frames(d, this.ref);
+    for (const c of this.conns.values()) if (c.open) for (const f of fs) c.send(f);
+  }
+  close() { clearInterval(this.beat); if (this.peer) { this.peer.destroy(); this.peer = null; } }
 }
 
 export function makeTransport(kind) {

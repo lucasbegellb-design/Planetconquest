@@ -27,5 +27,5 @@ Jeu de stratégie 100 % statique (HTML/CSS/JS, modules ES natifs, zéro dépenda
 ## Commandes
 - Jouer : `python3 -m http.server 8080` → http://localhost:8080
 - Équilibrage : `node tests/sim.mjs 30 France bot quiet`, `node tests/passive.mjs normal 20`, `REP=2.5 node tests/space-sim.mjs 4`
-- Navigateur (Playwright, serveur lancé) : `NODE_PATH=$(npm root -g) node tests/browser.cjs [url] [dossier] [mobile]`, `tests/browser-space.cjs`, `tests/browser-perf.cjs`
+- Navigateur (Playwright, serveur lancé) : `NODE_PATH=$(npm root -g) node tests/browser.cjs [url] [dossier] [mobile]`, `tests/browser-space.cjs`, `tests/browser-perf.cjs`, `tests/browser-multi.cjs` (2 navigateurs via PeerJS)
 - CI : `.github/workflows/deploy.yml` (syntaxe + smoke, puis Pages depuis la branche par défaut).

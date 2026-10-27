@@ -177,6 +177,7 @@ node tests/space-sim.mjs 3                      # planète extraterrestre de niv
 node tests/browser.cjs                          # partie Terre, UI, glisser-attaquer, gouverneur, timelapse, fps
 node tests/browser.cjs http://localhost:8080/ /tmp mobile
 node tests/browser-space.cjs                    # fusée → système → héritage → atterrissage → reprise
+node tests/browser-multi.cjs                    # multijoueur PeerJS : salon, attaque, synchro, reconnexion, fin (EARTH=1, MOBILE=1)
 node tests/browser-perf.cjs                     # performances (fin de partie, planète de 900 territoires)
 ```
 

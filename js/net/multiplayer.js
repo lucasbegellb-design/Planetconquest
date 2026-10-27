@@ -20,6 +20,8 @@ export class Multi {
     this.assign = new Map();  // id réseau -> id de pays
     this.pending = new Map();
     this.rid = 1;
+    // fermeture propre de la connexion quand l'onglet se ferme : les autres le savent tout de suite
+    window.addEventListener('pagehide', () => { if (this.t) this.t.close(); });
   }
 
   get active() { return !!this.t; }
@@ -82,10 +84,11 @@ export class Multi {
           const cid = back[1];
           this.assign.delete(back[0]);
           this.assign.set(from, cid);
-          this.players.set(from, { id: from, name: d.name, k: -1, ready: true });
+          this.players.set(from, { id: from, name: d.name, k: -1, ready: false, rejoin: true });
           this.game.countries[cid].isPlayer = true;
           this.game.say(`🔌 ${d.name} reprend le contrôle de son pays.`, 'info', { imp: true });
-          this.t.send(from, { t: 'start', snap: this.game.serialize(), assign: cid, settings: this.settings });
+          // le joueur reconstruit la carte, l'hôte vérifie le hash puis envoie l'état de la partie
+          this.t.send(from, { t: 'rejoin', settings: this.settings });
         } else this.t.send(from, { t: 'kick', reason: 'La partie a déjà commencé.' });
         return;
       }
@@ -98,9 +101,15 @@ export class Multi {
     const p = this.players.get(from);
     if (!p) return;
     if (d.t === 'mapHash') {
-      if (d.h === this.hash) { p.ready = true; this.broadcastLobby(); }
-      else this.t.send(from, { t: 'mapData', data: encodeMap(app.map) });
-    } else if (d.t === 'mapOk') { p.ready = true; this.broadcastLobby(); }
+      if (d.h !== this.hash) this.t.send(from, { t: 'mapData', data: encodeMap(app.map) });
+      if (this.game) {
+        if (p.rejoin) {
+          p.rejoin = false; p.ready = true;
+          this.t.send(from, { t: 'start', snap: this.game.serialize(), assign: this.assign.get(from), settings: this.settings });
+          if (this.game.over === 'match') this.t.send(from, { t: 'end', ranking: this.game.ranking() });
+        }
+      } else if (d.h === this.hash) { p.ready = true; this.broadcastLobby(); }
+    } else if (d.t === 'mapOk') { if (!this.game) { p.ready = true; this.broadcastLobby(); } }
     else if (d.t === 'pick') {
       if (!this.game && this.free(d.k, from)) { p.k = d.k; this.broadcastLobby(); }
     } else if (d.t === 'cmd') {
@@ -136,7 +145,13 @@ export class Multi {
   async onClientMsg(d) {
     const app = this.app;
     switch (d.t) {
+      case 'rejoin':
+        this.settings = d.settings;
+        await app.mpEnterLobby(d.settings);
+        $('.pick-banner b').textContent = 'Reconnexion à la partie…';
+        break;
       case 'lobby': {
+        if (this.game) break;
         const first = !this.settings;
         this.settings = d.settings;
         this.lobby = d;
@@ -150,7 +165,7 @@ export class Multi {
         app.mpMapReplaced();
         this.t.send('host', { t: 'mapOk' });
         break;
-      case 'start': app.mpStartClient(d.snap, d.assign, d.settings); break;
+      case 'start': this.settings = d.settings; app.mpStartClient(d.snap, d.assign, d.settings); break;
       case 'tick': this.applyTick(d); break;
       case 'res': if (d.r && d.r.msg) toast(esc(d.r.msg), d.r.ok ? 'ok' : 'err', 2200); break;
       case 'emote': this.emote(d.name, d.e); break;
