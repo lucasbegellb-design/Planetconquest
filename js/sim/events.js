@@ -36,7 +36,7 @@ const EVENTS = [
 
 export function eventsTick(g, dt) {
   if (g.t < g.nextEvent) return;
-  g.nextEvent = g.t + 14 + g.rng.next() * 18;
+  g.nextEvent = g.t + (14 + g.rng.next() * 18) / g.pace;
   const alive = g.countries.filter((c) => !c.neutral && c.alive);
   if (!alive.length) return;
   const ev = g.rng.weighted(EVENTS, (e) => e.w);

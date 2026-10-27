@@ -24,6 +24,7 @@ Jeu de stratégie en temps réel, jouable dans le navigateur, inspiré des vidé
 
 ### Conquête (phase 2)
 - La simulation tourne en temps réel : **⏸ / x1 / x2 / x4**.
+- **Rythme** (accueil) : *Stratégique* (par défaut), *Posé* ou *Classique*. Il règle la vitesse des guerres — progression des offensives, durée des combats, recrutement, fréquence des décisions de l'IA et des événements, durée de la paix initiale — alors que l'économie ralentit moins : plus de temps pour développer, rechercher et planifier entre deux conflits.
 - Touchez un territoire étranger : choisissez le **% de votre armée** à engager, consultez le **rapport de force estimé**, puis **Attaquer**. L'offensive avance territoire par territoire en direction du territoire visé ; chaque conquête laisse une garnison, si bien qu'une offensive finit toujours par s'essouffler.
 - Votre **réserve** défend vos frontières : tout engager au même endroit vous rend vulnérable.
 - Les montagnes, jungles, capitales et territoires historiques (patriotisme) se défendent mieux. Les attaques **navales** demandent la Navigation et subissent un malus (réduit par les ports et certaines technologies).
@@ -181,7 +182,7 @@ Mesuré avec le joueur automatique (`tests/bot.mjs`), difficulté Normale, temps
 | Planètes de niveau 1 à 3 | conquises en 7 à 32 min |
 | Planètes de niveau 4 à 8 (technologies infinies accumulées) | 10 à 18 min, environ une défaite sur quatre |
 
-Difficultés (Terre, France, joueur automatique de conquête utilisant gouvernements et merveilles, 6 graines) : **Facile** 17–29 min (souvent ≈ 19), **Normale** 20–27 min (une partie sur six dépasse 45 min), **Difficile** 22–30 min ou plus de 45 min une fois sur deux, **Impossible** : défaite fréquente entre 7 et 18 min. Un joueur pacifique (`tests/passive.mjs`) n'est pas attaqué pendant 20 min en Facile/Normale ; en Difficile la première guerre arrive vers 15 min.
+Au rythme *Stratégique* (par défaut), le même joueur automatique met 25 à 32 min en Normale (29 à 35 au rythme 0,5) ; un joueur humain compte plutôt 40 à 60 min. Au rythme *Classique* — difficultés (Terre, France, joueur automatique de conquête utilisant gouvernements et merveilles, 6 graines) : **Facile** 17–29 min (souvent ≈ 19), **Normale** 20–27 min (une partie sur six dépasse 45 min), **Difficile** 22–30 min ou plus de 45 min une fois sur deux, **Impossible** : défaite fréquente entre 7 et 18 min. Un joueur pacifique (`tests/passive.mjs`) n'est pas attaqué pendant 20 min en Facile/Normale ; en Difficile la première guerre arrive vers 15 min.
 
 Un joueur humain, moins systématique que le bot, met typiquement 25 à 40 minutes pour conquérir la Terre. Toutes les constantes sont regroupées dans `js/sim/balance.js` et `js/space/progression.js`.
 

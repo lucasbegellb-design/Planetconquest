@@ -90,6 +90,7 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .form { margin: 16px 0 6px; display: grid; gap: 12px; }
 .row label { display: block; color: var(--muted); font-size: 13px; margin-bottom: 5px; }
 .row.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.row.three { display: grid; grid-template-columns: 1fr 1.4fr 0.75fr; gap: 8px; }
 .menu-card:not(.proc) .proc-only { display: none; }
 .menu-actions { display: grid; gap: 8px; margin-top: 16px; }
 .small-actions { justify-content: center; flex-wrap: wrap; }

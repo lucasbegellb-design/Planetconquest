@@ -23,6 +23,7 @@ Jeu de stratégie 100 % statique (HTML/CSS/JS, modules ES natifs, zéro dépenda
 - Toute capture passe par `g.capture()` (animations, historique, éliminations).
 - Textes du fil : accorder avec `v(pays, 'annexe', 'annexent')`, articles via `art/Art/de/a/en` (`js/core/fr.js`).
 - La carte est cyclique en x : utiliser `wrapDx`.
+- Rythme `g.pace` (0,6 stratégique par défaut … 1 classique) : multiplie vitesse des offensives, pertes, recrutement, fréquence IA/événements ; l'économie est multipliée par √pace. Les tests Node utilisent pace = 1.
 
 ## Commandes
 - Jouer : `python3 -m http.server 8080` → http://localhost:8080

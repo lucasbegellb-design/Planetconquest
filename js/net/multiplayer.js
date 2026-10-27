@@ -256,7 +256,7 @@ export class Multi {
       <div class="lb-head"><b>🌐 Partie en ligne</b><span class="code">${esc(s.code)}</span>
         <button class="btn small" id="lb-copy">🔗 Inviter</button></div>
       <div class="lb-list">${rows}</div>
-      <p class="hint">${st.mode === 'earth' ? 'Terre réelle' : 'Monde procédural'} · ${st.teams ? '2 équipes' : 'chacun pour soi'} · ${Math.round(st.duration / 60)} min · IA ${esc(st.difficulty)} · x${st.speed} · ${s.players.length}/${MAX_PLAYERS} joueurs</p>
+      <p class="hint">${st.mode === 'earth' ? 'Terre réelle' : 'Monde procédural'} · ${st.teams ? '2 équipes' : 'chacun pour soi'} · ${Math.round(st.duration / 60)} min · IA ${esc(st.difficulty)} · rythme ${({ 0.6: 'stratégique', 0.8: 'posé', 1: 'classique' })[st.pace] || 'classique'} · x${st.speed} · ${s.players.length}/${MAX_PLAYERS} joueurs</p>
       ${this.isHost ? `<button class="btn primary" id="lb-start" ${can ? '' : 'disabled'}>▶️ Lancer la partie</button>
         ${can ? '' : `<p class="hint">Il faut au moins 2 joueurs, chacun avec un pays${st.teams ? ', et les deux équipes représentées' : ''}.</p>`}` : '<p class="hint">En attente du lancement par l’hôte…</p>'}`;
     $('#lb-copy').onclick = async () => {

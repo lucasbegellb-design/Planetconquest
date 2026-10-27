@@ -40,6 +40,7 @@ export const HELP_HTML = `
     <li><b>Espace</b> pause · <b>1-4</b> vitesse · <b>T</b> technologies · <b>E</b> empire · <b>Échap</b> menu · <b>F</b> recentrer sur votre pays.</li>
     <li><b>👥 Multijoueur</b> (accueil) : créez une partie, partagez le code ; jusqu'à 6 joueurs, en chacun pour soi ou en 2 équipes alliées, avec un chrono. L'IA joue les autres pays. Score = territoires + objectifs (bouton 🎯) ; 💬 pour discuter.</li>
     <li><b>🧭 Conseiller</b> : des astuces selon votre situation, désactivables depuis le menu ☰.</li>
+    <li><b>Rythme</b> (accueil) : en mode <i>Stratégique</i>, les guerres avancent plus lentement que l'économie, pour laisser le temps de planifier. <i>Classique</i> pour des parties plus nerveuses.</li>
     <li>La partie est sauvegardée automatiquement. Exportez-la en fichier depuis le menu ☰.</li>
   </ul>
 </div>`;

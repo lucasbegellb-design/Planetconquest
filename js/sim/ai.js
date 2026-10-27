@@ -17,7 +17,7 @@ export function aiTick(g, dt) {
     if (c.neutral || c.isPlayer || !c.alive) continue;
     c.ai.next -= dt;
     if (c.ai.next > 0) continue;
-    c.ai.next = (5 + g.rng.next() * 4) * g.diff.think;
+    c.ai.next = ((5 + g.rng.next() * 4) * g.diff.think) / g.pace;
     think(g, c);
     if (!c.alive || g.over) return;
     aiEmpire(g, c);
@@ -63,10 +63,10 @@ function think(g, c) {
   if (myOffs.length >= maxOff || c.army < st.armyCap * 0.5 || avail < c.army * 0.4 || g.t < c.ai.cool) return;
 
   // une IA en paix n'ouvre un nouveau conflit que de temps en temps, de plus en plus avec le temps
-  const ramp = clamp(0.4 + g.t / 1500, 0.4, 1);
+  const ramp = clamp(0.4 + (g.t * g.pace) / 1500, 0.4, 1);
   const wantsWar = g.warCount(c.id) === 0 ? r.chance(BAL.AI_WAR_CHANCE * c.ai.aggr * (g.diff.war || 1) * ramp) : r.chance(0.5);
-  const grace = g.t < BAL.AI_GRACE || !wantsWar;
-  const playerGrace = g.t < (g.diff.grace || 200) + (g.planet.level > 0 ? 150 : 0);
+  const grace = g.t * g.pace < BAL.AI_GRACE || !wantsWar;
+  const playerGrace = g.t * g.pace < (g.diff.grace || 200) + (g.planet.level > 0 ? 150 : 0);
   let best = -1, bestS = 0;
   for (const nid of g.neighborsOf(c.id)) {
     const n = g.countries[nid];
@@ -107,7 +107,7 @@ function think(g, c) {
     const n = g.countries[best];
     if (!n.neutral && r.chance(0.5)) target = n.capital;
     const res = g.launch(c.id, best, frac, target);
-    if (res.ok) c.ai.cool = g.t + 25 + r.next() * 35;
+    if (res.ok) c.ai.cool = g.t + (25 + r.next() * 35) / g.pace;
   }
 }
 

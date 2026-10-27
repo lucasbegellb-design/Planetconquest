@@ -25,6 +25,7 @@ export function initMenu(h) {
   ptype.value = params.get('type') && PLANET_TYPES[params.get('type')] ? params.get('type') : prefs.type || 'terran';
   if (prefs.difficulty) $('#diff').value = prefs.difficulty;
   if (prefs.speed) $('#speed0').value = String(prefs.speed);
+  if (prefs.pace) $('#pace').value = String(prefs.pace);
   const naiFor = { earth: prefs.naiEarth || EARTH_MAX, proc: prefs.naiProc || 24 };
 
   const updNai = () => {
@@ -54,10 +55,10 @@ export function initMenu(h) {
     const s = {
       mode, seed: (seed.value.trim() || randomSeed()).slice(0, 24), type: ptype.value,
       nAI: mode === 'earth' && +nai.value >= EARTH_MAX ? 0 : +nai.value,
-      difficulty: $('#diff').value, speed: +$('#speed0').value,
+      difficulty: $('#diff').value, speed: +$('#speed0').value, pace: +$('#pace').value,
     };
     try {
-      localStorage.setItem(PREFS, JSON.stringify({ mode, type: s.type, difficulty: s.difficulty, speed: s.speed, naiEarth: naiFor.earth, naiProc: naiFor.proc }));
+      localStorage.setItem(PREFS, JSON.stringify({ mode, type: s.type, difficulty: s.difficulty, speed: s.speed, pace: s.pace, naiEarth: naiFor.earth, naiProc: naiFor.proc }));
     } catch { /* stockage indisponible */ }
     return s;
   };

@@ -25,6 +25,8 @@ export class Game {
     this.opts = opts;
     this.rng = new RNG(opts.simSeed ?? ((Math.random() * 4294967296) >>> 0));
     this.diff = DIFFICULTIES[opts.difficulty] || DIFFICULTIES.normal;
+    // rythme militaire : < 1 = offensives, combats, recrutement et décisions de l'IA plus lents (l'économie, elle, ne ralentit pas)
+    this.pace = opts.pace || 1;
     this.planet = opts.planet || { name: 'Terre', type: 'earth', level: 0, rules: { naval: 0.65, freeNavigation: false, speed: 1, growth: 1 }, aiBonus: 1, aiEra: 0, neutralEra: 0 };
     const n = map.cells.length;
     this.nCells = n;
@@ -288,11 +290,12 @@ export class Game {
       const P = Math.max(0.01, aPop[id]), f = Math.pow(P, -0.2), fr = Math.pow(P, -0.4);
       const ai = !c.isPlayer, boost = ai ? this.planet.aiBonus || 1 : 1;
       const mf = 0.7 + (0.6 * c.morale) / 100;
-      st.income = (BAL.K_GOLD * aW[id] * f * (1 + c.mods.eco + c.perk.eco + c.tmod.eco) * mf + BAL.LAND_TAX * aN[id]) * (ai ? this.diff.eco * boost : 1);
-      st.upkeep = c.army * BAL.K_UPKEEP * (1 + 0.1 * c.era);
+      const ep = Math.sqrt(this.pace); // l'économie ralentit moins que la guerre
+      st.income = (BAL.K_GOLD * aW[id] * f * (1 + c.mods.eco + c.perk.eco + c.tmod.eco) * mf + BAL.LAND_TAX * aN[id]) * (ai ? this.diff.eco * boost : 1) * ep;
+      st.upkeep = c.army * BAL.K_UPKEEP * (1 + 0.1 * c.era) * ep;
       st.armyCap = (BAL.MANPOWER * Math.pow(Math.max(0.01, aMan[id]), 0.85) + BAL.BARRACKS_CAP * aBar[id]) * (1 + c.mods.manpower + c.perk.manpower);
-      st.recruit = st.armyCap * BAL.RECRUIT * (1 + c.mods.recruit + c.perk.recruit + 0.04 * aBar[id] + 0.05 * aFac[id]) * (0.6 + 0.4 * mf);
-      st.rp = (BAL.K_RESEARCH * aSci[id] * fr + BAL.UNI_RP * aUni[id]) * (1 + c.mods.research + c.perk.research + c.tmod.research) * (ai ? this.diff.research * boost : 1);
+      st.recruit = st.armyCap * BAL.RECRUIT * this.pace * (1 + c.mods.recruit + c.perk.recruit + 0.04 * aBar[id] + 0.05 * aFac[id]) * (0.6 + 0.4 * mf);
+      st.rp = (BAL.K_RESEARCH * aSci[id] * fr + BAL.UNI_RP * aUni[id]) * (1 + c.mods.research + c.perk.research + c.tmod.research) * (ai ? this.diff.research * boost : 1) * ep;
       st.prod = BAL.K_PROD * aProd[id] * f * (1 + c.mods.prod + c.perk.prod);
       c.gold += (st.income - st.upkeep) * dt;
       st.bankrupt = c.gold < 0;
@@ -650,11 +653,11 @@ export class Game {
       const sA = o.troops * qa, sD = dTroops * qd;
       const r = sA / Math.max(1, sD);
       const f = (1.7 * r * r) / (0.7 + r * r);
-      const spd = BAL.CAPTURE_SPEED * (1 + A.mods.speed + A.perk.speed + A.tmod.speed + gb.speed) * cl.speed * (rules.speed || 1) * (o.naval ? 0.75 : 1);
+      const spd = BAL.CAPTURE_SPEED * this.pace * (1 + A.mods.speed + A.perk.speed + A.tmod.speed + gb.speed) * cl.speed * (rules.speed || 1) * (o.naval ? 0.75 : 1);
       const size = Math.pow(cd.n / 900, 0.25);
       o.progress += (dt * spd * f) / Math.max(0.6, size);
-      const killA = (BAL.KILL * sD * dt) / Math.sqrt(qa);
-      const killD = (BAL.KILL * sA * dt) / Math.sqrt(qd);
+      const killA = (BAL.KILL * this.pace * sD * dt) / Math.sqrt(qa);
+      const killD = (BAL.KILL * this.pace * sA * dt) / Math.sqrt(qd);
       o.troops -= killA;
       A.losses += killA;
       if (dTroops > 0) {
@@ -954,7 +957,7 @@ export class Game {
   // ---------- sauvegarde ----------
   serialize() {
     return {
-      v: 1, t: this.t, playerId: this.playerId, conquered: this.conquered, over: this.over, match: this.match,
+      v: 1, t: this.t, pace: this.pace, playerId: this.playerId, conquered: this.conquered, over: this.over, match: this.match,
       res: Array.from(this.res), wonders: this.wonders, vassals: [...this.vassals], trades: [...this.trades],
       crisis: this.crisis, nextCrisis: this.nextCrisis, season: this.season, lastNuke: this.lastNuke,
       rocket: this.rocket, nextEvent: this.nextEvent, eraFirsts: this.eraFirsts, rng: this.rng.s,
@@ -985,7 +988,7 @@ export class Game {
 
   static restore(map, opts, s) {
     const g = new Game(map, opts);
-    g.t = s.t; g.playerId = s.playerId; g.match = s.match; g.conquered = s.conquered; g.over = s.over; g.rocket = s.rocket;
+    g.t = s.t; g.pace = s.pace || 1; g.playerId = s.playerId; g.match = s.match; g.conquered = s.conquered; g.over = s.over; g.rocket = s.rocket;
     g.nextEvent = s.nextEvent; g.eraFirsts = s.eraFirsts; g.rng.s = s.rng; g.nextOffId = s.nextOffId; g.nextPropId = s.nextPropId;
     g.owner.set(s.owner); g.pop.set(s.pop); g.base.set(s.base); g.build.set(s.build); g.unrest.set(s.unrest);
     if (s.res) g.res.set(s.res); else placeResources(g); // anciennes sauvegardes

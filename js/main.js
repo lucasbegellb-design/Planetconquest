@@ -354,7 +354,7 @@ class App {
   startHome(k) {
     const s = this.setup.settings, map = this.map;
     const planet = this.homePlanet(this.setup.spec);
-    const game = Game.create(map, { difficulty: s.difficulty, playerIndex: k, nAI: s.nAI, planet });
+    const game = Game.create(map, { difficulty: s.difficulty, pace: s.pace, playerIndex: k, nAI: s.nAI, planet });
     $('#pick').hidden = true;
     this.beginPlay(game, true);
     const P = game.countries[game.playerId];
@@ -556,7 +556,7 @@ class App {
         <button class="btn big" data-m="help">❓ Comment jouer</button>
         <button class="btn big danger" data-m="quit">🏠 Quitter vers l'accueil</button>
       </div>
-      <p class="hint center">Difficulté : ${DIFFICULTIES[this.setup.settings.difficulty]?.label || ''} · Temps de jeu : ${fmtTime(this.game.t)}</p>`, { narrow: true });
+      <p class="hint center">Difficulté : ${DIFFICULTIES[this.setup.settings.difficulty]?.label || ''} · Rythme : ${({ 0.6: 'stratégique', 0.8: 'posé', 1: 'classique' })[this.game.pace] || this.game.pace} · Temps de jeu : ${fmtTime(this.game.t)}</p>`, { narrow: true });
     root.addEventListener('click', (e) => {
       const m = e.target.closest('[data-m]');
       if (!m) return;
@@ -696,7 +696,7 @@ class App {
   startLanding(cell) {
     const meta = this.meta, spec = this.setup.spec;
     const game = Game.create(this.map, {
-      difficulty: meta.difficulty || 'normal', planet: planetInfo(spec), landing: cell,
+      difficulty: meta.difficulty || 'normal', pace: this.setup.settings.pace, planet: planetInfo(spec), landing: cell,
       meta: { name: meta.name, art: meta.art, title: meta.title, color: meta.color, techs: meta.techs, repeat: meta.repeat, perk: meta.perk, bonusGold: meta.bonusGold },
     });
     $('#pick').hidden = true;
@@ -858,7 +858,7 @@ class App {
     const ps = [...m.players.values()];
     const hostK = m.players.get('host').k;
     const game = Game.create(this.map, {
-      difficulty: s.difficulty, playerIndex: hostK, humans: ps.filter((p) => p.id !== 'host').map((p) => p.k),
+      difficulty: s.difficulty, pace: s.pace, playerIndex: hostK, humans: ps.filter((p) => p.id !== 'host').map((p) => p.k),
       nAI: s.nAI ? s.nAI + ps.length : 0, planet: this.homePlanet(this.setup.spec), match: { duration: s.duration },
     });
     $('#pick').hidden = true; $('#lobby-card').hidden = true;
