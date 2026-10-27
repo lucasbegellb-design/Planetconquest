@@ -20,6 +20,7 @@ const OUT = process.argv[2] || '/tmp';
   await A.click('#btn-multi');
   await A.fill('#mp-name', 'Alice');
   await A.selectOption('#mp-dur', '10');
+  if (process.env.TEAMS) await A.selectOption('#mp-mode', 'teams');
   await A.click('#mp-create');
   await A.waitForFunction(() => app.multi.code && app.mode === 'pick' && !app.mapBuilding, null, { timeout: 30000 });
   const code = await A.evaluate(() => app.multi.code);
@@ -40,6 +41,19 @@ const OUT = process.argv[2] || '/tmp';
   await A.screenshot({ path: OUT + '/mp-lobby.png' });
   const dis = await A.evaluate(() => document.querySelector('#lb-start')?.disabled);
   console.log('start disabled', dis, JSON.stringify(await A.evaluate(() => [...app.multi.players.values()])));
+  if (process.env.TEAMS) {
+    console.log('teams', JSON.stringify(await A.evaluate(() => [...app.multi.players.values()].map((p) => p.team))));
+    await B.click('[data-switch]');
+    await A.waitForTimeout(800);
+    console.log('same team -> start disabled', await A.evaluate(() => document.querySelector('#lb-start').disabled));
+    await B.click('[data-switch]');
+    await A.waitForTimeout(800);
+  }
+  // discussion
+  await B.evaluate(() => app.multi.sendChat('Salut Alice !'));
+  await A.evaluate(() => app.multi.sendChat('Bonne chance'));
+  await A.waitForTimeout(800);
+  console.log('chat A', await A.evaluate(() => app.multi.chat.map((m) => m.name + ':' + m.text).join(' / ')), '| chat B', await B.evaluate(() => app.multi.chat.length));
   await A.click('#lb-start', { timeout: 15000 }).catch(async (e) => { console.log('ERRS', errs.join('\n')); console.log('B state', await B.evaluate(() => JSON.stringify({ mode: app.mode, cells: app.map.cells.length, toasts: document.querySelector('#toasts').innerText }))); process.exit(1); });
   await B.waitForFunction(() => app.mode === 'play' && app.game, null, { timeout: 20000 });
   await A.waitForTimeout(3000);
@@ -65,6 +79,12 @@ const OUT = process.argv[2] || '/tmp';
   let diff = 0; const xa = oa.split(','), xb = ob.split(','); for (let i = 0; i < xa.length; i++) if (xa[i] !== xb[i]) diff++;
   console.log('owner diffs', diff, '/', xa.length);
   await B.screenshot({ path: OUT + '/mp-client.png' });
+  console.log('HUD score B', await B.evaluate(() => document.querySelector('[data-open="score"]')?.textContent));
+  await B.evaluate(() => app.multi.openScores());
+  await B.waitForTimeout(300);
+  await B.screenshot({ path: OUT + '/mp-scores.png' });
+  await B.evaluate(() => document.querySelector('.modal-close, [data-close]')?.click());
+  await B.keyboard.press('Escape');
   // déconnexion / reconnexion de Bob
   const bid = await B.evaluate(() => app.game.playerId);
   await B.close();

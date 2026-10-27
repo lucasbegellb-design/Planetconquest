@@ -398,3 +398,30 @@ body.mp-client .speed { pointer-events: none; opacity: 0.6; }
 body.mp .tb-time { display: block !important; color: var(--accent2); }
 body.mp .tb-time.urgent { color: var(--bad); animation: pulse 1s infinite; }
 @keyframes pulse { 50% { opacity: .45; } }
+/* équipes, discussion, objectifs (multijoueur) */
+.team-chip { border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; font-size: 12px; background: rgba(255, 255, 255, 0.05); color: var(--text); font-family: var(--ui); }
+.team-chip.t0 { border-color: rgba(90, 150, 255, 0.6); background: rgba(90, 150, 255, 0.14); }
+.team-chip.t1 { border-color: rgba(239, 91, 91, 0.6); background: rgba(239, 91, 91, 0.14); }
+button.team-chip[data-switch] { cursor: pointer; }
+button.team-chip:disabled { opacity: 1; cursor: default; }
+.team-score { display: flex; gap: 8px; justify-content: center; margin: 6px 0 10px; flex-wrap: wrap; }
+.team-score .team-chip { font-size: 14px; padding: 4px 12px; }
+.chat-log { max-height: 220px; overflow-y: auto; margin: 12px 0 8px; padding: 8px 10px; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--line); border-radius: 10px; font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+.chat-log .team { color: var(--accent2); }
+#chat-form input { flex: 1; min-width: 0; }
+.objs { display: flex; flex-direction: column; gap: 4px; }
+.obj { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+.obj small { grid-column: 1 / -1; color: var(--muted); }
+.obj.done { border-color: rgba(76, 195, 138, 0.45); background: rgba(76, 195, 138, 0.07); }
+.obj.done small { color: var(--good); }
+/* conseiller */
+.advisor { position: absolute; left: 10px; bottom: calc(116px + var(--safe-b)); width: 280px; padding: 10px 12px; border-radius: 12px;
+  background: var(--panel); border: 1px solid rgba(214, 168, 90, 0.45); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5); backdrop-filter: blur(8px);
+  font-size: 13px; line-height: 1.4; animation: newsIn 0.35s ease-out; z-index: 5; }
+.advisor .adv-head { font-weight: 700; color: var(--accent2); margin-bottom: 4px; }
+.advisor p { margin: 0 0 8px; }
+.advisor .adv-btns { display: flex; gap: 6px; justify-content: flex-end; }
+@media (max-width: 760px) {
+  .advisor { left: 8px; right: 8px; width: auto; bottom: auto; top: calc(160px + var(--safe-t)); }
+  body.panel-open .advisor { display: none; }
+}

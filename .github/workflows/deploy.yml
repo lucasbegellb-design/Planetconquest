@@ -23,6 +23,8 @@ jobs:
         run: for f in $(git ls-files '*.js' '*.mjs'); do node --check "$f"; done
       - name: Test rapide (cartes, simulation, sauvegarde)
         run: node tests/smoke.mjs
+      - name: Partie multijoueur simulée (équipes, objectifs, score)
+        run: node tests/match.mjs 10
   deploy:
     needs: test
     if: github.ref_name == github.event.repository.default_branch

@@ -9,7 +9,7 @@ Jeu de stratégie 100 % statique (HTML/CSS/JS, modules ES natifs, zéro dépenda
 
 ## Carte du code
 - `js/main.js` — classe `App` : écrans (`mode` = menu|pick|play|land|space|replay), boucle, sauvegarde, gestes, sons.
-- `js/sim/` — **pur, sans DOM** (testable en Node). `game.js` (état, économie `econ`, offensives `stepOffensives`, `capture`, diplomatie `_ask`/délais `dipCool`/trêves, `match` chronométré, `serialize/restore`, historique `hist`), `ai.js` (`eval*` = acceptation déterministe, personnalités, rampe d'agressivité), `events.js`, `governor.js`, `balance.js` (constantes, `DIFFICULTIES`, `AI_STYLES`).
+- `js/sim/` — **pur, sans DOM** (testable en Node). `game.js` (état, économie `econ`, offensives `stepOffensives`, `capture`, diplomatie `_ask`/délais `dipCool`/trêves, `match` chronométré, `serialize/restore`, historique `hist`), `ai.js` (`eval*` = acceptation déterministe, personnalités, rampe d'agressivité), `match.js` (équipes, objectifs, score), `advisor.js` (conseiller), `events.js`, `governor.js`, `balance.js` (constantes, `DIFFICULTIES`, `AI_STYLES`).
 - `js/map/` — génération (`earth.js`, `procedural.js`, `cells.js`, exécutée dans `worker.js`) et rendu (`renderer.js`, `paint.js`, `camera.js` = caméra + gestes).
 - `js/sim/commands.js` — `runCommand(g, id, nom, args)` : toutes les actions joueur passent par `app.cmd()` (local ou envoyées à l'hôte).
 - `js/net/` — multijoueur hôte-autoritaire : `transport.js` (PeerJS CDN / BroadcastChannel `?net=local`), `mapsync.js` (hash + transfert carte), `multiplayer.js` (salon, ticks hôte → miroir client `Game.restore`).
@@ -26,6 +26,6 @@ Jeu de stratégie 100 % statique (HTML/CSS/JS, modules ES natifs, zéro dépenda
 
 ## Commandes
 - Jouer : `python3 -m http.server 8080` → http://localhost:8080
-- Équilibrage : `node tests/sim.mjs 30 France bot quiet`, `node tests/passive.mjs normal 20`, `REP=2.5 node tests/space-sim.mjs 4`
+- Équilibrage : `node tests/sim.mjs 30 France bot quiet`, `node tests/passive.mjs normal 20`, `node tests/match.mjs 10 [ffa]`, `REP=2.5 node tests/space-sim.mjs 4`
 - Navigateur (Playwright, serveur lancé) : `NODE_PATH=$(npm root -g) node tests/browser.cjs [url] [dossier] [mobile]`, `tests/browser-space.cjs`, `tests/browser-perf.cjs`, `tests/browser-multi.cjs` (2 navigateurs via PeerJS)
 - CI : `.github/workflows/deploy.yml` (syntaxe + smoke, puis Pages depuis la branche par défaut).

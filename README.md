@@ -38,10 +38,15 @@ Jeu de stratégie en temps réel, jouable dans le navigateur, inspiré des vidé
 - L'or en excès peut servir à recruter des **mercenaires**.
 
 ### 👥 Multijoueur (sans serveur)
-- Accueil → **Multijoueur** → **Créer** : la carte et les réglages de l'accueil sont utilisés, choisissez la durée (10 à 45 min). Partagez le **code** (ou le lien d'invitation) ; jusqu'à 6 joueurs.
-- Mode **chacun pour soi chronométré** : l'IA joue tous les autres pays ; à la fin du chrono, le plus grand empire gagne (classement + timelapse).
+- Accueil → **Multijoueur** → **Créer** : la carte et les réglages de l'accueil sont utilisés ; choisissez la durée (10 à 45 min) et le mode. Partagez le **code** (ou le lien d'invitation) ; jusqu'à 6 joueurs.
+- Modes **chacun pour soi** ou **2 équipes** (🔵 Bleus / 🔴 Rouges, choisies dans le salon) : les coéquipiers sont alliés pour toute la partie et additionnent leurs scores. L'IA joue tous les autres pays.
+- **Score** = territoires + bonus d'**objectifs** : premier à l'époque médiévale, premier à doubler son territoire, première capitale ennemie conquise, premier à l'époque industrielle, et à la fin plus grande armée et plus de technologies. Tableau des scores avec le bouton 🎯. À la fin du chrono (ou s'il ne reste qu'un joueur / une équipe) : classement + timelapse.
+- 💬 **Discussion** : émotes et messages texte, à tous ou à son équipe.
 - La partie tourne dans le navigateur de l'**hôte** (qui doit rester ouvert) ; les autres reçoivent l'état en direct via WebRTC. La mise en relation utilise le serveur public gratuit de [PeerJS](https://peerjs.com/) : aucun serveur à héberger. Un joueur déconnecté peut revenir avec le même pseudo (l'IA garde son pays entre-temps).
 - Test local sans réseau : ouvrez deux onglets sur `?net=local` (BroadcastChannel).
+
+### 🧭 Conseiller
+Pour bien démarrer, un conseiller propose de temps en temps l'astuce la plus utile du moment : or qui dort, technologie disponible, voisin faible ou menaçant, réserve dégarnie, finances dans le rouge… Désactivable depuis la carte (« Ne plus afficher ») ou le menu ☰.
 
 ### Conquête spatiale (phase 4)
 - Pour quitter une planète : **100 % des territoires + époque spatiale + Colonisation spatiale + spatioport + fusée** (bouton 🚀 Objectifs).
@@ -122,6 +127,8 @@ js/
     events.js           événements aléatoires
     balance.js          constantes d'équilibrage et niveaux de difficulté
     governor.js         gouverneur automatique, recherche automatique, « construire partout »
+    match.js            partie chronométrée : équipes, objectifs, score
+    advisor.js          conseiller (astuces selon la situation)
     commands.js         actions d'un joueur (exécutées localement ou par l'hôte en multijoueur)
   net/                  multijoueur : transport.js (PeerJS / BroadcastChannel), mapsync.js, multiplayer.js
   tech/                 techtree.js (3 branches × 5 époques + répétables), buildings.js
@@ -171,13 +178,14 @@ node tests/smoke.mjs                            # test rapide utilisé par la CI
 node tests/genmap.mjs earth                     # génère la Terre + aperçu PNG
 node tests/genmap.mjs proc maGraine ocean       # planète procédurale
 node tests/sim.mjs 30 France bot                # 30 min simulées avec le joueur automatique
+node tests/match.mjs 10                         # partie multijoueur simulée : 4 bots en 2 équipes (ffa : chacun pour soi)
 node tests/passive.mjs normal 20 France          # joueur pacifique : quand subit-il sa première guerre ?
 node tests/space-sim.mjs 3                      # planète extraterrestre de niveau 3 (REP=2.5 : technologies infinies)
 # tests navigateur (Playwright + Chromium, serveur local sur :8080)
 node tests/browser.cjs                          # partie Terre, UI, glisser-attaquer, gouverneur, timelapse, fps
 node tests/browser.cjs http://localhost:8080/ /tmp mobile
 node tests/browser-space.cjs                    # fusée → système → héritage → atterrissage → reprise
-node tests/browser-multi.cjs                    # multijoueur PeerJS : salon, attaque, synchro, reconnexion, fin (EARTH=1, MOBILE=1)
+node tests/browser-multi.cjs                    # multijoueur PeerJS : salon, équipes, discussion, attaque, synchro, reconnexion, fin (TEAMS=1, EARTH=1, MOBILE=1)
 node tests/browser-perf.cjs                     # performances (fin de partie, planète de 900 territoires)
 ```
 

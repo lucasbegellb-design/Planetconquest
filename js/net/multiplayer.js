@@ -7,9 +7,11 @@ import { runCommand } from '../sim/commands.js';
 import { pairKey } from '../sim/game.js';
 import { rgbToCss, fmtTime } from '../core/util.js';
 import { art } from '../core/fr.js';
+import { setupMatch, teamRanking, OBJECTIVES } from '../sim/match.js';
 
 const MAX_PLAYERS = 6;
 const EMOTES = ['👋', '😂', '😡', '🤝', '😱', '🔥', 'GG'];
+export const TEAMS = [{ name: 'Bleus', icon: '🔵' }, { name: 'Rouges', icon: '🔴' }];
 
 export class Multi {
   constructor(app) {
@@ -20,6 +22,7 @@ export class Multi {
     this.assign = new Map();  // id réseau -> id de pays
     this.pending = new Map();
     this.rid = 1;
+    this.chat = []; // derniers messages { name, text, team }
     // fermeture propre de la connexion quand l'onglet se ferme : les autres le savent tout de suite
     window.addEventListener('pagehide', () => { if (this.t) this.t.close(); });
   }
@@ -35,7 +38,7 @@ export class Multi {
     this.t = makeTransport(settings.net);
     await this.t.start(this.code, true);
     this.me = 'host';
-    this.players.set('host', { id: 'host', name, k: -1, ready: true });
+    this.players.set('host', { id: 'host', name, k: -1, ready: true, team: 0 });
     this.t.on('join', () => {});
     this.t.on('message', (from, d) => this.onHostMsg(from, d));
     this.t.on('leave', (id) => this.onLeave(id));
@@ -66,7 +69,7 @@ export class Multi {
 
   // ---------- salon ----------
   lobbyState() {
-    return { t: 'lobby', settings: this.settings, code: this.code, players: [...this.players.values()].map((p) => ({ id: p.id, name: p.name, k: p.k, ready: p.ready })) };
+    return { t: 'lobby', settings: this.settings, code: this.code, players: [...this.players.values()].map((p) => ({ id: p.id, name: p.name, k: p.k, ready: p.ready, team: p.team })) };
   }
   broadcastLobby() {
     const s = this.lobbyState();
@@ -93,7 +96,8 @@ export class Multi {
         return;
       }
       if (this.players.size >= MAX_PLAYERS) { this.t.send(from, { t: 'kick', reason: 'La partie est complète.' }); return; }
-      this.players.set(from, { id: from, name: String(d.name || 'Joueur').slice(0, 18), k: -1, ready: false });
+      const n0 = [...this.players.values()].filter((q) => q.team === 0).length;
+      this.players.set(from, { id: from, name: String(d.name || 'Joueur').slice(0, 18), k: -1, ready: false, team: n0 > this.players.size - n0 ? 1 : 0 });
       toast(`👤 ${esc(this.players.get(from).name)} a rejoint la partie`, 'ok');
       this.broadcastLobby();
       return;
@@ -106,10 +110,13 @@ export class Multi {
         if (p.rejoin) {
           p.rejoin = false; p.ready = true;
           this.t.send(from, { t: 'start', snap: this.game.serialize(), assign: this.assign.get(from), settings: this.settings });
-          if (this.game.over === 'match') this.t.send(from, { t: 'end', ranking: this.game.ranking() });
+          if (this.game.over === 'match') this.t.send(from, { t: 'end', ranking: this.game.ranking(), md: this.game.match.done });
         }
       } else if (d.h === this.hash) { p.ready = true; this.broadcastLobby(); }
     } else if (d.t === 'mapOk') { if (!this.game) { p.ready = true; this.broadcastLobby(); } }
+    else if (d.t === 'team') {
+      if (!this.game) { p.team = 1 - (p.team || 0); this.broadcastLobby(); }
+    } else if (d.t === 'chat') this.routeChat(p, d);
     else if (d.t === 'pick') {
       if (!this.game && this.free(d.k, from)) { p.k = d.k; this.broadcastLobby(); }
     } else if (d.t === 'cmd') {
@@ -169,7 +176,8 @@ export class Multi {
       case 'tick': this.applyTick(d); break;
       case 'res': if (d.r && d.r.msg) toast(esc(d.r.msg), d.r.ok ? 'ok' : 'err', 2200); break;
       case 'emote': this.emote(d.name, d.e); break;
-      case 'end': if (this.game) { this.game.over = 'match'; this.game.emit('matchEnd', { ranking: d.ranking }); } break;
+      case 'chat': this.showChat(d); break;
+      case 'end': if (this.game) { if (d.md && this.game.match) this.game.match.done = d.md; this.game.over = 'match'; this.game.emit('matchEnd', { ranking: d.ranking }); } break;
     }
   }
 
@@ -192,6 +200,39 @@ export class Multi {
     else this.t.send('host', { t: 'emote', e });
   }
   emote(name, e) { toast(`<b>${esc(name)}</b> : <span style="font-size:20px">${esc(e)}</span>`, '', 2500); this.app.sound.click(); }
+  switchTeam() {
+    if (this.isHost) { const p = this.players.get('host'); p.team = 1 - (p.team || 0); this.broadcastLobby(); }
+    else this.t.send('host', { t: 'team' });
+  }
+
+  // ---------- discussion ----------
+  sendChat(text, team) {
+    text = String(text).trim().slice(0, 140);
+    if (!text) return;
+    if (this.isHost) this.routeChat(this.players.get('host'), { text, team });
+    else this.t.send('host', { t: 'chat', text, team: !!team });
+  }
+  // l'hôte relaie le message (aux coéquipiers seulement si « équipe »)
+  routeChat(p, d) {
+    const team = !!(d.team && this.settings.teams);
+    const msg = { t: 'chat', name: p.name, text: String(d.text || '').slice(0, 140), team };
+    for (const q of this.players.values()) {
+      if (team && q.team !== p.team) continue;
+      if (q.id === 'host') this.showChat(msg); else this.t.send(q.id, msg);
+    }
+  }
+  showChat(m) {
+    this.chat.push(m);
+    if (this.chat.length > 40) this.chat.shift();
+    const log = document.querySelector('#chat-log');
+    if (log) { log.innerHTML = this.chatHtml(); log.scrollTop = log.scrollHeight; }
+    else toast(`💬 ${m.team ? '<small>[équipe]</small> ' : ''}<b>${esc(m.name)}</b> : ${esc(m.text)}`, '', 4000);
+    this.app.sound.click();
+  }
+  chatHtml() {
+    return this.chat.map((m) => `<div class="${m.team ? 'team' : ''}"><b>${esc(m.name)}</b>${m.team ? ' <small>[équipe]</small>' : ''} : ${esc(m.text)}</div>`).join('') || '<p class="hint">Aucun message pour l’instant.</p>';
+  }
+
   hostLost() { if (!this.t) return; toast('🔌 Connexion avec l’hôte perdue.', 'err', 6000); this.app.mpHostLost(); }
 
   // ---------- salon (affichage) ----------
@@ -202,23 +243,28 @@ export class Multi {
     const map = this.app.map;
     const rows = s.players.map((p) => {
       const c = p.k >= 0 && map ? map.countries0[p.k] : null;
-      return `<div class="lb-row"><span class="swatch" style="background:${c ? rgbToCss(c.color) : '#555'}"></span>
+      const tm = s.settings.teams ? TEAMS[p.team || 0] : null;
+      const chip = tm ? `<button class="team-chip t${p.team || 0}" ${p.id === this.me ? 'data-switch' : 'disabled'} title="${p.id === this.me ? 'Changer d’équipe' : ''}">${tm.icon} ${tm.name}</button>` : '';
+      return `<div class="lb-row">${chip}<span class="swatch" style="background:${c ? rgbToCss(c.color) : '#555'}"></span>
         <b>${esc(p.name)}</b>${p.id === 'host' ? ' <small>(hôte)</small>' : ''}${p.id === this.me ? ' <small>(vous)</small>' : ''}
         <span class="hint">${c ? esc(c.name) : 'choisit son pays…'}${p.ready ? '' : ' · chargement'}</span></div>`;
     }).join('');
     const st = s.settings;
-    const can = this.isHost && s.players.length >= 2 && s.players.every((p) => p.k >= 0 && p.ready);
+    const teamsOk = !s.settings.teams || new Set(s.players.map((p) => p.team || 0)).size === 2;
+    const can = this.isHost && s.players.length >= 2 && teamsOk && s.players.every((p) => p.k >= 0 && p.ready);
     box.innerHTML = `
       <div class="lb-head"><b>🌐 Partie en ligne</b><span class="code">${esc(s.code)}</span>
         <button class="btn small" id="lb-copy">🔗 Inviter</button></div>
       <div class="lb-list">${rows}</div>
-      <p class="hint">${st.mode === 'earth' ? 'Terre réelle' : 'Monde procédural'} · ${Math.round(st.duration / 60)} min · IA ${esc(st.difficulty)} · x${st.speed} · ${s.players.length}/${MAX_PLAYERS} joueurs</p>
+      <p class="hint">${st.mode === 'earth' ? 'Terre réelle' : 'Monde procédural'} · ${st.teams ? '2 équipes' : 'chacun pour soi'} · ${Math.round(st.duration / 60)} min · IA ${esc(st.difficulty)} · x${st.speed} · ${s.players.length}/${MAX_PLAYERS} joueurs</p>
       ${this.isHost ? `<button class="btn primary" id="lb-start" ${can ? '' : 'disabled'}>▶️ Lancer la partie</button>
-        ${can ? '' : '<p class="hint">Il faut au moins 2 joueurs, chacun avec un pays.</p>'}` : '<p class="hint">En attente du lancement par l’hôte…</p>'}`;
+        ${can ? '' : `<p class="hint">Il faut au moins 2 joueurs, chacun avec un pays${st.teams ? ', et les deux équipes représentées' : ''}.</p>`}` : '<p class="hint">En attente du lancement par l’hôte…</p>'}`;
     $('#lb-copy').onclick = async () => {
       try { await navigator.clipboard.writeText(this.link()); toast('🔗 Lien d’invitation copié', 'ok'); }
       catch { prompt('Lien d’invitation :', this.link()); }
     };
+    const sw = box.querySelector('[data-switch]');
+    if (sw) sw.onclick = () => this.switchTeam();
     const b = $('#lb-start');
     if (b) b.onclick = () => this.app.mpStartHost();
   }
@@ -232,7 +278,8 @@ export class Multi {
       this.assign.set(p.id, cid);
       this.names.set(cid, p.name);
     }
-    game.match.names = Object.fromEntries(this.names);
+    const teams = this.settings.teams ? Object.fromEntries([...this.players.values()].map((p) => [game.humanIdOf(p.k), p.team || 0])) : null;
+    setupMatch(game, Object.fromEntries(this.names), teams);
     this.buf = { cap: [], news: [], ev: [] };
     this.acc = { tick: 0, cs: 1, slow: 2 };
     this.techV = new Map();
@@ -242,7 +289,7 @@ export class Multi {
     game.on('war', (w) => this.buf.ev.push(['war', w.a, w.b]));
     game.on('eliminated', (e) => this.buf.ev.push(['eliminated', e.id, e.by]));
     game.on('era', (e) => this.buf.ev.push(['era', e.id, e.era]));
-    game.on('matchEnd', (e) => this.t.broadcast({ t: 'end', ranking: e.ranking }));
+    game.on('matchEnd', (e) => this.t.broadcast({ t: 'end', ranking: e.ranking, md: game.match.done }));
     for (const [pid, cid] of this.assign) if (pid !== 'host') this.t.send(pid, { t: 'start', snap: game.serialize(), assign: cid, settings: this.settings });
     // l'hôte continue de simuler même si son onglet passe en arrière-plan
     this.bgLast = performance.now();
@@ -278,6 +325,7 @@ export class Multi {
         if (this.techV.get(c.id) !== v) { this.techV.set(c.id, v); base.tech.push([c.id, [...c.techs], c.repeat]); }
       }
       base.cool = [...g.dipCool];
+      base.md = g.match.done;
     }
     if (A.slow >= 2) {
       A.slow = 0;
@@ -316,6 +364,7 @@ export class Multi {
       g.alliances = new Set(d.dip[1]);
       g.truces = new Map(d.dip[2]);
       g.dipCool = new Map(d.cool);
+      if (d.md && g.match) g.match.done = d.md;
       for (const [id, techs, rep] of d.tech) {
         const c = g.countries[id];
         if (!c) continue;
@@ -348,28 +397,71 @@ export class Multi {
 
   // ---------- fenêtres ----------
   openEmotes() {
-    const root = openModal(`<h2>💬 Message rapide</h2><div class="emotes">${EMOTES.map((e) => `<button class="btn big" data-e="${e}">${e}</button>`).join('')}</div>`, { narrow: true });
+    const teams = this.settings && this.settings.teams;
+    const root = openModal(`<h2>💬 Discussion</h2>
+      <div class="emotes">${EMOTES.map((e) => `<button class="btn big" data-e="${e}">${e}</button>`).join('')}</div>
+      <div id="chat-log" class="chat-log">${this.chatHtml()}</div>
+      <form class="inline" id="chat-form"><input type="text" id="chat-text" maxlength="140" placeholder="Votre message…" autocomplete="off">
+        <button class="btn primary">Envoyer</button></form>
+      ${teams ? '<label class="check"><input type="checkbox" id="chat-team"> Équipe seulement</label>' : ''}`, { narrow: true });
+    const log = root.querySelector('#chat-log');
+    log.scrollTop = log.scrollHeight;
     root.addEventListener('click', (ev) => {
       const b = ev.target.closest('[data-e]');
       if (!b) return;
       this.sendEmote(b.dataset.e);
       closeModal();
     });
+    root.querySelector('#chat-form').onsubmit = (ev) => {
+      ev.preventDefault();
+      const inp = root.querySelector('#chat-text'), tm = root.querySelector('#chat-team');
+      this.sendChat(inp.value, tm && tm.checked);
+      inp.value = '';
+    };
+  }
+
+  // Tableau des scores et objectifs (bouton 🎯 en multijoueur)
+  openScores() {
+    const g = this.game;
+    if (!g || !g.match) return;
+    openModal(`<h2>🎯 Partie en cours</h2><p class="hint">Score = territoires + bonus d’objectifs. Fin dans <b>${fmtTime(Math.max(0, g.match.ends - g.t))}</b>.</p>`
+      + this.scoreTable(g.ranking(), g.playerId) + this.objectivesHtml(g), { narrow: true });
+  }
+  objectivesHtml(g) {
+    const m = g.match, names = m.names || {};
+    return `<h3>Objectifs</h3><div class="objs">${OBJECTIVES.map((o) => {
+      const who = m.done && m.done[o.id];
+      return `<div class="obj ${who !== undefined ? 'done' : ''}"><span>${o.icon} ${o.name}</span><b>+${o.pts * (m.unit || 1)}</b>
+        <small>${who !== undefined ? '✔ ' + esc(names[who] || '') : o.end ? 'attribué à la fin' : 'à prendre'}</small></div>`;
+    }).join('')}</div>`;
+  }
+  scoreTable(ranking, me) {
+    const medals = ['🥇', '🥈', '🥉'];
+    const g = this.game, names = (g && g.match && g.match.names) || {}, teams = g && g.match && g.match.teams;
+    const humans = ranking.filter((r) => names[r.id] || r.id === me);
+    const row = (r, i) => `<tr class="${r.id === me ? 'me' : ''}"><td>${medals[i] || i + 1}</td>
+      <td>${teams ? TEAMS[teams[r.id] || 0].icon + ' ' : ''}<b>${esc(names[r.id] || 'Vous')}</b> <span class="swatch" style="background:${rgbToCss(r.color)}"></span>${esc(r.name)}${r.alive ? '' : ' 💀'}</td>
+      <td>${r.cells}</td><td>${r.bonus ? '+' + r.bonus : ''}</td><td><b>${r.score}</b></td></tr>`;
+    const tr = teamRanking(g, ranking);
+    const head = tr ? `<div class="team-score">${tr.map((t) => `<span class="team-chip t${t.team}">${TEAMS[t.team].icon} ${TEAMS[t.team].name} : <b>${t.score}</b></span>`).join('')}</div>` : '';
+    return head + `<div class="table-wrap"><table class="rank"><thead><tr><th>#</th><th>Joueur</th><th>Terr.</th><th>Bonus</th><th>Score</th></tr></thead><tbody>${humans.map(row).join('')}</tbody></table></div>`;
   }
 
   showResults(ranking, me) {
-    const medals = ['🥇', '🥈', '🥉'];
-    const names = (this.game && this.game.match && this.game.match.names) || {};
-    const world = new Map(ranking.map((r, i) => [r.id, i + 1]));
+    const g = this.game, names = (g && g.match && g.match.names) || {}, teams = g && g.match && g.match.teams;
     const humans = ranking.filter((r) => names[r.id] || r.id === me);
-    const row = (r, i) => `<tr class="${r.id === me ? 'me' : ''}"><td>${medals[i] || i + 1}</td>
-      <td><b>${esc(names[r.id] || 'Vous')}</b> <span class="swatch" style="background:${rgbToCss(r.color)}"></span>${esc(r.name)}</td>
-      <td>${r.cells}</td><td>${r.alive ? world.get(r.id) + '<sup>e</sup>' : '💀'}</td></tr>`;
     const myRank = humans.findIndex((r) => r.id === me) + 1;
+    let won = myRank === 1, msg;
+    if (teams) {
+      const tr = teamRanking(g, ranking), mine = teams[me];
+      won = tr[0].team === mine && tr[0].score > tr[1].score;
+      msg = tr[0].score === tr[1].score ? 'Égalité parfaite entre les deux équipes !'
+        : won ? `<b>Victoire des ${TEAMS[mine].name} !</b> Votre équipe l’emporte.` : `Les ${TEAMS[tr[0].team].name} l’emportent.`;
+    } else msg = won ? '<b>Victoire !</b> Votre empire a le meilleur score.' : `Vous terminez <b>${myRank}<sup>e</sup></b> sur ${humans.length} joueurs.`;
     const top = ranking.filter((r) => !names[r.id]).slice(0, 3).map((r) => `${esc(r.name)} (${r.cells})`).join(', ');
-    return `<div class="center"><div class="big-emoji">${myRank === 1 ? '🏆' : '⏱️'}</div><h2>Fin de la partie</h2>
-      <p>${myRank === 1 ? '<b>Victoire !</b> Votre empire est le plus grand.' : `Vous terminez <b>${myRank}<sup>e</sup></b> sur ${humans.length} joueurs.`}</p></div>
-      <div class="table-wrap"><table class="rank"><thead><tr><th>#</th><th>Joueur</th><th>Terr.</th><th>Monde</th></tr></thead><tbody>${humans.map(row).join('')}</tbody></table></div>
+    return `<div class="center"><div class="big-emoji">${won ? '🏆' : '⏱️'}</div><h2>Fin de la partie</h2><p>${msg}</p></div>
+      ${this.scoreTable(ranking, me)}
+      ${g && g.match ? this.objectivesHtml(g) : ''}
       <p class="hint center">Plus grandes puissances IA : ${top}</p>`;
   }
 }

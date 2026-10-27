@@ -1,4 +1,5 @@
 // Barre supérieure, fil d'actualité, propositions diplomatiques, mini-carte.
+import { bonusOf } from '../sim/match.js';
 import { $, $$, esc, toast, openModal } from './dom.js';
 import { fmtBig, fmtPop, fmtInt, fmt1, fmtTime, rgbToCss } from '../core/util.js';
 import { ERAS, TECHS, REPEATABLES, canResearch, repeatCost } from '../tech/techtree.js';
@@ -16,7 +17,7 @@ export class Hud {
     $('#btn-menu').addEventListener('click', () => app.openGameMenu());
     $('#tb-country').addEventListener('click', () => app.selectPlayer());
     this.newsBox.addEventListener('click', () => this.openLog());
-    $('#tb-stats').addEventListener('click', (e) => { if (e.target.closest('[data-open="rank"]')) this.openRanking(); });
+    $('#tb-stats').addEventListener('click', (e) => { if (e.target.closest('[data-open="rank"]')) this.openRanking(); if (e.target.closest('[data-open="score"]')) this.app.multi.openScores(); });
     const fab = $('#aim-pct');
     fab.addEventListener('click', () => {
       const P = [25, 50, 75, 100];
@@ -95,7 +96,9 @@ export class Hud {
       `<div class="stat" title="Moral">${P.morale > 60 ? '😊' : P.morale > 35 ? '😐' : '😟'} ${Math.round(P.morale)}</div>`,
       `<div class="stat" title="Territoires contrôlés">🗺️ ${n}<small>/ ${g.nCells} (${Math.floor((n / g.nCells) * 100)} %)</small></div>`,
       `<div class="stat" title="Époque">🏛️ ${ERAS[P.era].name}</div>`,
-      `<div class="stat link" data-open="rank" title="Classement mondial">🏆 ${this.rank(g)}<small>/ ${this.alive}</small></div>`,
+      g.match && g.match.names
+        ? `<div class="stat link" data-open="score" title="Score de la partie">🎯 ${g.cellsOf[g.playerId].size + bonusOf(g, g.playerId)}<small> pts</small></div>`
+        : `<div class="stat link" data-open="rank" title="Classement mondial">🏆 ${this.rank(g)}<small>/ ${this.alive}</small></div>`,
     ].join('');
     if (html !== this.lastStats) { $('#tb-stats').innerHTML = html; this.lastStats = html; }
     const left = g.match ? Math.max(0, g.match.ends - g.t) : -1;

@@ -9,6 +9,7 @@ import { wrapDx, clamp } from '../core/util.js';
 import { aiTick, aiResearch, evalPeace, evalAlliance, evalNap, evalSurrender } from './ai.js';
 import { eventsTick } from './events.js';
 import { governorTick, autoResearchTick } from './governor.js';
+import { matchTick, matchCapital, finalAwards, matchDecided, sameTeam, bonusOf } from './match.js';
 
 export const pairKey = (a, b) => (a < b ? a * 4096 + b : b * 4096 + a);
 const NEUTRAL = 0;
@@ -499,7 +500,7 @@ export class Game {
     this.emit('alliance', { a, b });
   }
   breakAlliance(a, b) {
-    if (!this.allied(a, b)) return;
+    if (!this.allied(a, b) || sameTeam(this, a, b)) return;
     this.alliances.delete(pairKey(a, b));
     this.addRel(a, b, -40);
     this.say(`💔 ${Art(this.countries[a])} ${v(this.countries[a], 'rompt son', 'rompent leur')} alliance avec ${art(this.countries[b])}.`, 'alliance', { player: this.involvesPlayer(a, b) });
@@ -675,6 +676,7 @@ export class Game {
     this.hist.pend.push(cell, a);
     this.emit('capture', { cell, from: d, to: a, src, delay });
     if (!D.neutral) {
+      if (D.capital === cell && this.match) matchCapital(this, a, d);
       if (this.cellsOf[d].size === 0) this.eliminate(d, a);
       else if (D.capital === cell) {
         this._relocateCapital(D);
@@ -715,10 +717,7 @@ export class Game {
       if (!this.match) this.over = 'defeat';
       this.emit('defeat');
     }
-    if (this.match && this.match.names) {
-      const alive = Object.keys(this.match.names).filter((id) => this.countries[id].alive);
-      if (alive.length <= 1) this.endMatch('survivant');
-    }
+    if (this.match && this.match.names && matchDecided(this)) this.endMatch('survivant');
   }
 
   surrender(loser, winner) {
@@ -874,18 +873,26 @@ export class Game {
       }
     }
     // partie chronométrée (multijoueur)
-    if (this.match && !this.over && this.t >= this.match.ends) this.endMatch('temps');
+    if (this.match && !this.over) {
+      if ((this.matchAcc = (this.matchAcc || 0) + dt) >= 1) { this.matchAcc = 0; matchTick(this); }
+      if (this.t >= this.match.ends) this.endMatch('temps');
+    }
     if (this.proposals.length) this.proposals = this.proposals.filter((p) => p.until > this.t);
   }
 
-  // Classement : territoires, puis population
+  // Classement : score (territoires + bonus d’objectifs en multijoueur), puis population
   ranking() {
-    return this.countries.filter((c) => !c.neutral && (c.alive || c.isPlayer))
-      .map((c) => ({ id: c.id, name: c.name, color: c.color, human: !!c.isPlayer, cells: this.cellsOf[c.id].size, pop: c.st.pop, alive: c.alive }))
-      .sort((a, b) => b.cells - a.cells || b.pop - a.pop);
+    const names = (this.match && this.match.names) || {};
+    return this.countries.filter((c) => !c.neutral && (c.alive || c.isPlayer || names[c.id]))
+      .map((c) => {
+        const cells = this.cellsOf[c.id].size, bonus = names[c.id] ? bonusOf(this, c.id) : 0;
+        return { id: c.id, name: c.name, color: c.color, human: !!c.isPlayer, cells, bonus, score: cells + bonus, pop: c.st.pop, alive: c.alive };
+      })
+      .sort((a, b) => b.score - a.score || b.pop - a.pop);
   }
   endMatch(reason) {
     if (this.over) return;
+    finalAwards(this);
     this.over = 'match';
     this.flushHist();
     this.emit('matchEnd', { reason, ranking: this.ranking() });

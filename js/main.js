@@ -26,6 +26,7 @@ import { Replay } from './ui/replay.js';
 import { Multi } from './net/multiplayer.js';
 import { mapHash } from './net/mapsync.js';
 import { runCommand } from './sim/commands.js';
+import { Advisor } from './ui/advisor.js';
 
 class App {
   constructor() {
@@ -57,6 +58,7 @@ class App {
     this.panel = new Panel(this);
     this.space = new SpaceView(this);
     this.replay = new Replay(this);
+    this.advisor = new Advisor(this);
     this.multi = new Multi(this);
     $('#btn-multi').addEventListener('click', () => this.mpOpen());
     $('#btn-emote').addEventListener('click', () => this.multi.openEmotes());
@@ -376,6 +378,7 @@ class App {
   beginPlay(game, focus) {
     const r = this.renderer;
     this.game = game;
+    this.advisor.reset();
     this.mode = 'play';
     r.pickMode = false;
     r.selCell = -1; r.selCountry = -1; r.painter.selCell = -1; r.painter.selCountry = -1;
@@ -392,7 +395,8 @@ class App {
     document.body.classList.toggle('mp', mp);
     document.body.classList.toggle('mp-client', this.multi.isClient);
     $('#btn-emote').hidden = !mp;
-    $('#btn-goals').hidden = mp;
+    $('#btn-goals').textContent = mp ? '🎯' : '🚀';
+    $('#btn-goals').title = mp ? 'Scores et objectifs' : 'Objectifs';
     game.on('rocketReady', () => toast('🚀 La fusée est prête ! Ouvrez les objectifs pour la lancer.', 'ok', 6000));
     game.on('launch', () => this.onLaunch());
     const pid = game.playerId, snd = this.sound;
@@ -493,6 +497,7 @@ class App {
   openGoals() {
     const g = this.game;
     if (!g) return;
+    if (this.multi.active) { this.multi.openScores(); return; }
     const render = () => {
       const s = g.rocketStatus(), P = g.countries[g.playerId];
       const n = g.cellsOf[g.playerId].size;
@@ -543,6 +548,7 @@ class App {
         <div class="two"><button class="btn" data-m="sound">${this.sound.on ? '🔊 Son activé' : '🔇 Son coupé'}</button><button class="btn" data-m="haptics">${this.sound.haptics ? '📳 Vibrations' : '📴 Sans vibration'}</button></div>
         ${document.fullscreenEnabled ? '<button class="btn big" data-m="fs">⛶ Plein écran</button>' : ''}
         <button class="btn big" data-m="labels">🏷️ ${this.renderer.showLabels ? 'Masquer' : 'Afficher'} les noms</button>
+        <button class="btn big" data-m="advisor">🧭 Conseiller : ${this.advisor.on ? 'activé' : 'désactivé'}</button>
         <button class="btn big" data-m="help">❓ Comment jouer</button>
         <button class="btn big danger" data-m="quit">🏠 Quitter vers l'accueil</button>
       </div>
@@ -561,6 +567,7 @@ class App {
         case 'haptics': this.sound.setHaptics(!this.sound.haptics); closeModal(); this.openGameMenu(); break;
         case 'fs': closeModal(); if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); break;
         case 'labels': this.renderer.showLabels = !this.renderer.showLabels; closeModal(); break;
+        case 'advisor': this.advisor.setOn(!this.advisor.on); closeModal(); this.openGameMenu(); break;
         case 'help': openModal(HELP_HTML); break;
         case 'quit': closeModal(); this.autosave(); this.toMenu(); break;
       }
@@ -752,6 +759,7 @@ class App {
     $('#lobby-card').hidden = true;
     this.mode = 'menu';
     this.game = null;
+    this.advisor.hide();
     this.renderer = null;
     $('#hud').hidden = true;
     $('#pick').hidden = true;
@@ -770,7 +778,7 @@ class App {
     let name = '';
     try { name = localStorage.getItem('terra-conquest-name') || ''; } catch { /* ignore */ }
     const root = openModal(`<h2>👥 Multijoueur</h2>
-      <p class="hint">Chacun pour soi, partie chronométrée : le plus grand empire à la fin l'emporte. L'IA joue tous les autres pays.
+      <p class="hint">Partie chronométrée, en chacun pour soi ou en 2 équipes alliées : le meilleur score (territoires + objectifs) l'emporte. L'IA joue tous les autres pays.
       La partie tourne chez l'hôte, qui doit garder le jeu ouvert. Jusqu'à 6 joueurs.</p>
       <div class="form">
         <div class="row"><label>Votre pseudo</label><input type="text" id="mp-name" maxlength="18" value="${esc(name)}" placeholder="Pseudo"></div>
@@ -778,7 +786,8 @@ class App {
       <h3>🌐 Créer une partie</h3>
       <p class="hint">La carte et les réglages de l'accueil sont utilisés (Terre ou monde procédural, difficulté, nombre de pays).</p>
       <div class="row two"><div><label>Durée</label><select id="mp-dur"><option value="10">10 min</option><option value="15">15 min</option><option value="20" selected>20 min</option><option value="30">30 min</option><option value="45">45 min</option></select></div>
-        <div><label>&nbsp;</label><button class="btn primary" id="mp-create" style="width:100%">Créer</button></div></div>
+        <div><label>Mode</label><select id="mp-mode"><option value="ffa">Chacun pour soi</option><option value="teams">2 équipes</option></select></div></div>
+      <button class="btn primary" id="mp-create" style="width:100%">Créer la partie</button>
       <h3>🔑 Rejoindre une partie</h3>
       <div class="inline"><input type="text" id="mp-code" maxlength="5" placeholder="CODE" value="${esc(code)}" style="text-transform:uppercase;letter-spacing:3px;font-weight:700">
         <button class="btn primary" id="mp-join">Rejoindre</button></div>`, { narrow: true });
@@ -789,7 +798,7 @@ class App {
     };
     const net = new URLSearchParams(location.search).get('net') === 'local' ? 'local' : 'peer';
     root.querySelector('#mp-create').onclick = async () => {
-      const settings = { ...this.menu.settings(), duration: +root.querySelector('#mp-dur').value * 60, net }, name = getName();
+      const settings = { ...this.menu.settings(), duration: +root.querySelector('#mp-dur').value * 60, teams: root.querySelector('#mp-mode').value === 'teams', net }, name = getName();
       closeModal();
       try { await this.mpCreate(settings, name); } catch (err) { console.error(err); toast('🌐 ' + esc(err.message), 'err', 5000); this.toMenu(); }
     };
@@ -903,6 +912,7 @@ class App {
         if (T.hud > 0.25) { T.hud = 0; this.hud.update(); }
         if (T.panel > 0.5) { T.panel = 0; if (this.sel.cell >= 0) this.panel.render(); }
         if (T.mini > 0.3) { T.mini = 0; this.renderer.renderMinimap($('#minimap')); }
+        this.advisor.tick(dt);
         // ambiance sonore des combats du joueur
         if (this.speed > 0 && !paused && (T.boom -= dt) < 0) {
           const g = this.game, pid = g.playerId;
