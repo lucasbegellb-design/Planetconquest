@@ -79,6 +79,13 @@ const OUT = process.argv[2] || '/tmp';
   let diff = 0; const xa = oa.split(','), xb = ob.split(','); for (let i = 0; i < xa.length; i++) if (xa[i] !== xb[i]) diff++;
   console.log('owner diffs', diff, '/', xa.length);
   await B.screenshot({ path: OUT + '/mp-client.png' });
+  // empire côté client : gouvernement + merveille, synchronisés par l'hôte
+  await B.evaluate(() => { app.cmd('gov', 'monarchy'); });
+  await A.evaluate((id) => { app.game.countries[id].gold += 1000; }, await B.evaluate(() => app.game.playerId));
+  await A.waitForTimeout(1500);
+  await B.evaluate(() => { app.cmd('wonder', 'library'); });
+  await A.waitForTimeout(1500);
+  console.log('empire B', await B.evaluate(() => { const P = app.game.countries[app.game.playerId]; return JSON.stringify({ gov: P.gov, job: P.job && P.job.wid, res: P.resN }); }));
   console.log('HUD score B', await B.evaluate(() => document.querySelector('[data-open="score"]')?.textContent));
   await B.evaluate(() => app.multi.openScores());
   await B.waitForTimeout(300);

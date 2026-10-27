@@ -289,6 +289,7 @@ export class Multi {
     game.on('war', (w) => this.buf.ev.push(['war', w.a, w.b]));
     game.on('eliminated', (e) => this.buf.ev.push(['eliminated', e.id, e.by]));
     game.on('era', (e) => this.buf.ev.push(['era', e.id, e.era]));
+    game.on('nuke', (e) => this.buf.ev.push(['nuke', e.a, e.cell]));
     game.on('matchEnd', (e) => this.t.broadcast({ t: 'end', ranking: e.ranking, md: game.match.done }));
     for (const [pid, cid] of this.assign) if (pid !== 'host') this.t.send(pid, { t: 'start', snap: game.serialize(), assign: cid, settings: this.settings });
     // l'hôte continue de simuler même si son onglet passe en arrière-plan
@@ -308,7 +309,7 @@ export class Multi {
     if (A.tick < 0.1) return;
     A.tick = 0;
     const base = { t: 'tick', T: Math.round(g.t * 100) / 100, sp: this.app.speed, cap: this.buf.cap, ev: this.buf.ev };
-    base.offs = g.offensives.map((o) => [o.id, o.a, o.d, Math.round(o.troops), Math.round(o.initial), o.cur, o.src, o.naval ? 1 : 0, Math.round(o.progress * 100) / 100, Math.round((o.fight || 0) * 100) / 100, Math.round((o.ratio || 0) * 100) / 100]);
+    base.offs = g.offensives.map((o) => [o.id, o.a, o.d, Math.round(o.troops), Math.round(o.initial), o.cur, o.src, o.naval ? 1 : 0, Math.round(o.progress * 100) / 100, Math.round((o.fight || 0) * 100) / 100, Math.round((o.ratio || 0) * 100) / 100, o.gen || 0]);
     if (g.countries.length > this.nCountries) {
       base.newC = g.countries.slice(this.nCountries).map((c) => ({ id: c.id, name: c.name, art: c.art, title: c.title, color: c.color, capital: c.capital }));
       this.nCountries = g.countries.length;
@@ -325,6 +326,9 @@ export class Multi {
         if (this.techV.get(c.id) !== v) { this.techV.set(c.id, v); base.tech.push([c.id, [...c.techs], c.repeat]); }
       }
       base.cool = [...g.dipCool];
+      // empire : gouvernement, chantier, arsenal, généraux, ressources ; vassaux, commerce, merveilles, crise
+      base.ext = g.countries.map((c) => (c.neutral || !c.alive ? 0 : [c.gov, c.job ? [c.job.wid, Math.round(c.job.left)] : 0, c.nukes || 0, c.generals && c.generals.length ? c.generals : 0, c.resN || 0, c.govT ?? null]));
+      base.vt = [[...g.vassals], [...g.trades], g.wonders, g.crisis];
       base.md = g.match.done;
     }
     if (A.slow >= 2) {
@@ -350,7 +354,7 @@ export class Multi {
     if (d.sp !== undefined) this.app.hostSpeed(d.sp);
     if (d.newC) for (const c of d.newC) if (!g.countries[c.id]) { g._addCountry(c); g.landN.push(new Map()); g.seaN.push(new Map()); }
     for (let i = 0; i < d.cap.length; i += 4) g.applyCapture(d.cap[i], d.cap[i + 1], d.cap[i + 2], d.cap[i + 3] / 100);
-    g.offensives = d.offs.map((o) => ({ id: o[0], a: o[1], d: o[2], troops: o[3], initial: o[4], cur: o[5], src: o[6], naval: !!o[7], progress: o[8], fight: o[9], ratio: o[10], len: 0, captured: 0 }));
+    g.offensives = d.offs.map((o) => ({ id: o[0], a: o[1], d: o[2], troops: o[3], initial: o[4], cur: o[5], src: o[6], naval: !!o[7], progress: o[8], fight: o[9], ratio: o[10], gen: o[11] || 0, len: 0, captured: 0 }));
     if (d.cs) {
       d.cs.forEach((v, id) => {
         const c = g.countries[id];
@@ -364,6 +368,13 @@ export class Multi {
       g.alliances = new Set(d.dip[1]);
       g.truces = new Map(d.dip[2]);
       g.dipCool = new Map(d.cool);
+      if (d.ext) d.ext.forEach((x, id) => {
+        const c = g.countries[id];
+        if (!c || !x) return;
+        c.gov = x[0]; c.job = x[1] ? { wid: x[1][0], left: x[1][1] } : null; c.nukes = x[2]; c.generals = x[3] || []; c.resN = x[4] || null;
+        if (x[5] !== null) c.govT = x[5];
+      });
+      if (d.vt) { g.vassals = new Map(d.vt[0]); g.trades = new Set(d.vt[1]); g.wonders = d.vt[2]; g.crisis = d.vt[3]; }
       if (d.md && g.match) g.match.done = d.md;
       for (const [id, techs, rep] of d.tech) {
         const c = g.countries[id];
@@ -391,6 +402,7 @@ export class Multi {
       if (k === 'war') g.emit('war', { a, b });
       else if (k === 'eliminated') { g.emit('eliminated', { id: a, by: b }); if (a === g.playerId) g.emit('defeat'); }
       else if (k === 'era') g.emit('era', { id: a, era: b });
+      else if (k === 'nuke') g.emit('nuke', { a, cell: b });
     }
     if (g.t >= g.hist.next) g.flushHist();
   }

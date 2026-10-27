@@ -1,5 +1,6 @@
 // Barre supérieure, fil d'actualité, propositions diplomatiques, mini-carte.
 import { bonusOf } from '../sim/match.js';
+import { SEASONS, CRISES, seasonOf } from '../sim/military.js';
 import { $, $$, esc, toast, openModal } from './dom.js';
 import { fmtBig, fmtPop, fmtInt, fmt1, fmtTime, rgbToCss } from '../core/util.js';
 import { ERAS, TECHS, REPEATABLES, canResearch, repeatCost } from '../tech/techtree.js';
@@ -13,6 +14,7 @@ export class Hud {
     this.lastStats = '';
     $$('#speed button').forEach((b) => b.addEventListener('click', () => app.setSpeed(+b.dataset.speed)));
     $('#btn-tech').addEventListener('click', () => app.openTech());
+    $('#btn-empire').addEventListener('click', () => app.openEmpire());
     $('#btn-goals').addEventListener('click', () => app.openGoals());
     $('#btn-menu').addEventListener('click', () => app.openGameMenu());
     $('#tb-country').addEventListener('click', () => app.selectPlayer());
@@ -103,7 +105,9 @@ export class Hud {
     if (html !== this.lastStats) { $('#tb-stats').innerHTML = html; this.lastStats = html; }
     const left = g.match ? Math.max(0, g.match.ends - g.t) : -1;
     const tt = $('#tb-time');
-    tt.textContent = left >= 0 ? '⏳ ' + fmtTime(left) : '⏱ ' + fmtTime(g.t);
+    const se = SEASONS[seasonOf(g)], cr = g.crisis && g.crisis.until > g.t ? CRISES[g.crisis.id] : null;
+    tt.textContent = `${se.icon} ${left >= 0 ? '⏳ ' + fmtTime(left) : fmtTime(g.t)}${cr ? ' ' + cr.icon : ''}`;
+    tt.title = `${se.name} (hémisphère nord)${cr ? ` · ${cr.name} : ${cr.desc}, encore ${Math.ceil(g.crisis.until - g.t)} s` : ''}`;
     tt.classList.toggle('urgent', left >= 0 && left < 60);
     // techno disponibles
     let afford = TECHS.filter((t) => canResearch(P.techs, P.era, t) && P.rp >= t.cost).length;
@@ -146,7 +150,8 @@ export class Hud {
   showProposal(p) {
     const g = this.app.game, F = g.countries[p.from];
     if (p.to !== undefined && p.to !== g.playerId) return;
-    const what = `${p.type === 'peace' ? '🕊️' : p.type === 'nap' ? '📜' : '🤝'} <b>${esc(Art(F))}</b> ${v(F, 'vous propose', 'vous proposent')} ${p.type === 'peace' ? 'la paix' : p.type === 'nap' ? 'un pacte de non-agression' : 'une alliance'}.`;
+    const K = { peace: ['🕊️', 'la paix'], nap: ['📜', 'un pacte de non-agression'], trade: ['🚢', 'un accord commercial (+6 % d’or)'], alliance: ['🤝', 'une alliance'] }[p.type] || ['🤝', 'une alliance'];
+    const what = `${K[0]} <b>${esc(Art(F))}</b> ${v(F, 'vous propose', 'vous proposent')} ${K[1]}.`;
     const t = toast(`${what}<div class="acts"><button class="btn small good" data-a="1">Accepter</button><button class="btn small" data-a="0">Refuser</button></div>`, '', 0);
     if (!t) return;
     this.propToasts.set(p.id, t);

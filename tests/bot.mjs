@@ -1,5 +1,9 @@
 // Joueur automatique simple pour estimer la durée d'une conquête.
 import { TECHS, REPEATABLES, canResearch, repeatCost } from '../js/tech/techtree.js';
+import { setGov, canGov, startWonder, WONDERS } from '../js/sim/empire.js';
+
+// gouvernement préféré du bot conquérant, du plus au moins voulu
+const BOT_GOVS = ['communism', 'dictatorship', 'republic', 'monarchy'];
 
 export function botTick(g) {
   const id = g.playerId, P = g.countries[id];
@@ -16,6 +20,10 @@ export function botTick(g) {
     const r = REPEATABLES[0];
     if (P.rp >= repeatCost(r, P.repeat[r.id] || 0)) g.researchRepeat(id, r.id);
   }
+  // gouvernement et merveilles
+  const gov = BOT_GOVS.find((x) => canGov(g, id, x).ok || P.gov === x);
+  if (gov && gov !== P.gov) setGov(g, id, gov);
+  if (!P.job) { const w = WONDERS.find((x) => !g.wonders[x.id] && P.era >= x.era && P.gold > x.cost * 2); if (w) startWonder(g, id, w.id); }
   // bâtiments
   if (P.gold > 120) {
     const cells = [...g.cellsOf[id]].sort((a, b) => g.pop[b] - g.pop[a]).slice(0, 15);

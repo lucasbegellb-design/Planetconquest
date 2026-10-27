@@ -2,6 +2,9 @@
 //  - cible les voisins faibles (ou déjà en guerre), garde des réserves si menacée
 //  - fait la paix quand la guerre s'enlise, capitule quand tout est perdu
 //  - cherche des alliés face à un voisin trop puissant, trahit parfois
+import { aiEmpire } from './empire.js';
+import { aiMilitary } from './military.js';
+import { aiStatecraft } from './statecraft.js';
 import { TECHS, REPEATABLES, canResearch, repeatCost } from '../tech/techtree.js';
 import { BUILDINGS, BI, NB, buildCost } from '../tech/buildings.js';
 import { clamp } from '../core/util.js';
@@ -17,6 +20,9 @@ export function aiTick(g, dt) {
     c.ai.next = (5 + g.rng.next() * 4) * g.diff.think;
     think(g, c);
     if (!c.alive || g.over) return;
+    aiEmpire(g, c);
+    aiMilitary(g, c);
+    aiStatecraft(g, c);
   }
 }
 
@@ -118,7 +124,8 @@ function aiDiplomacy(g, c) {
     const share = g.cellsOf[e].size / g.nCells;
     const lim = share > 0.7 ? 0.4 : 0.2;
     if (attacked && c.st.ncells <= Math.max(2, c.peakCells * (share > 0.7 ? 0.6 : 0.35)) && pc < pe * lim && r.chance(0.12)) {
-      g.surrender(c.id, e);
+      // un vainqueur IA préfère parfois un vassal à une annexion coûteuse
+      g.surrender(c.id, e, !E.isPlayer && c.st.ncells >= 3 && r.chance(0.4) ? 'vassal' : 'annex');
       return true;
     }
     if (dur < 45) continue;

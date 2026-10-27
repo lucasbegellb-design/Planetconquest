@@ -25,10 +25,19 @@ export const HELP_HTML = `
     <li>Recherchez 4 technologies d'une époque (toutes branches confondues) pour passer à la suivante : Antiquité → Médiéval → Industriel → Moderne → Spatial.</li>
     <li>Trop d'or ? Recrutez des <b>mercenaires</b> depuis le panneau de votre pays.</li>
   </ul>
+  <h3>🏛️ Empire (bouton 🏛️ ou touche E)</h3>
+  <ul>
+    <li><b>Gouvernement</b> : chaque régime a ses atouts (or, recherche, soldats…). Le premier choix est gratuit, les suivants imposent une transition.</li>
+    <li><b>Merveilles</b> : une seule de chaque sur la planète, gros bonus permanent ; prenez la capitale qui l'abrite pour la récupérer.</li>
+    <li><b>Ressources</b> 🐎 ⛓️ 💎 🛢️ ☢️ : visibles sur la carte en zoomant. Sans pétrole, Blindés et Aviation fonctionnent à moitié.</li>
+    <li><b>Généraux</b> : vos victoires en font naître ; ils mènent vos offensives et gagnent des étoiles.</li>
+    <li>Dans le panneau d'un pays : <b>accord commercial</b>, <b>vassalité</b> (au lieu de l'annexion), <b>espionnage</b>, et à l'ère moderne la <b>bombe atomique</b> (le monde ne vous le pardonnera pas).</li>
+    <li>❄️ L'hiver ralentit les offensives aux hautes latitudes, 🌧️ la mousson dans les tropiques. Des crises mondiales surviennent de temps en temps.</li>
+  </ul>
   <h3>🎮 Commandes</h3>
   <ul>
     <li><b>Souris</b> : clic = sélection, glisser = déplacer, molette = zoom. <b>Tactile</b> : toucher, glisser, pincer.</li>
-    <li><b>Espace</b> pause · <b>1-4</b> vitesse · <b>T</b> technologies · <b>Échap</b> menu · <b>F</b> recentrer sur votre pays.</li>
+    <li><b>Espace</b> pause · <b>1-4</b> vitesse · <b>T</b> technologies · <b>E</b> empire · <b>Échap</b> menu · <b>F</b> recentrer sur votre pays.</li>
     <li><b>👥 Multijoueur</b> (accueil) : créez une partie, partagez le code ; jusqu'à 6 joueurs, en chacun pour soi ou en 2 équipes alliées, avec un chrono. L'IA joue les autres pays. Score = territoires + objectifs (bouton 🎯) ; 💬 pour discuter.</li>
     <li><b>🧭 Conseiller</b> : des astuces selon votre situation, désactivables depuis le menu ☰.</li>
     <li>La partie est sauvegardée automatiquement. Exportez-la en fichier depuis le menu ☰.</li>

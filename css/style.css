@@ -151,7 +151,7 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .stat small { color: var(--muted); font-size: 11px; }
 .stat .up { color: var(--good); } .stat .down { color: var(--bad); }
 .tb-right { display: flex; align-items: center; gap: 6px; }
-.tb-time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; min-width: 44px; text-align: right; }
+.tb-time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; min-width: 44px; text-align: right; white-space: nowrap; }
 .speed { display: flex; background: rgba(0, 0, 0, 0.35); border-radius: 10px; padding: 2px; border: 1px solid var(--line); }
 .speed button { background: transparent; border: 0; padding: 5px 8px; border-radius: 8px; cursor: pointer; color: var(--muted); font-size: 13px; }
 .speed button.on { background: var(--accent); color: #10131a; font-weight: 700; }
@@ -425,3 +425,19 @@ button.team-chip:disabled { opacity: 1; cursor: default; }
   .advisor { left: 8px; right: 8px; width: auto; bottom: auto; top: calc(160px + var(--safe-t)); }
   body.panel-open .advisor { display: none; }
 }
+/* fenêtre Empire */
+.emp-tabs { grid-template-columns: repeat(5, 1fr); margin: 6px 0 8px; }
+.emp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; margin-bottom: 8px; }
+.emp-grid .tech { margin: 0; cursor: default; display: flex; flex-direction: column; gap: 6px; }
+.emp-grid .tech .btn, .emp-grid .tech select { align-self: flex-start; margin-top: auto; }
+.emp-h { font-family: var(--head); margin: 14px 0 4px; font-size: 16px; }
+.emp-h small { color: var(--muted); font-family: var(--ui); font-weight: 400; font-size: 13px; }
+.emp-job { padding: 8px 10px; border: 1px solid var(--accent); border-radius: 10px; margin-bottom: 8px; }
+p.warn { color: var(--warn); }
+@media (max-width: 760px) {
+  .emp-tabs { display: flex; overflow-x: auto; }
+  .emp-tabs .tab { flex: 0 0 auto; white-space: nowrap; }
+}
+details.spy { margin-top: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; }
+details.spy summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+details.spy .two { margin-top: 6px; }

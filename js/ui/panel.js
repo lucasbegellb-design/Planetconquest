@@ -4,11 +4,14 @@ import { fmtBig, fmtPop, fmtInt, fmt1, rgbToCss } from '../core/util.js';
 import { BUILDINGS, BI, NB } from '../tech/buildings.js';
 import { ERAS } from '../tech/techtree.js';
 import { BIOMES } from '../map/biomes.js';
-import { Art, art } from '../core/fr.js';
+import { Art, art, de } from '../core/fr.js';
 import { BAL } from '../sim/balance.js';
 import { GOV_MODES, bulkCost } from '../sim/governor.js';
 import { AI_STYLES } from '../sim/balance.js';
 import { pairKey } from '../sim/game.js';
+import { RESOURCES, WONDERS, GOV_BY_ID } from '../sim/empire.js';
+import { climateAt, generalOf } from '../sim/military.js';
+import { overlordOf, vassalsOf, trading, tradesOf, maxTrades, SPY, spyCost } from '../sim/statecraft.js';
 
 const PRESETS = [25, 50, 75, 100];
 const mobile = () => matchMedia('(max-width: 760px), (max-height: 500px)').matches;
@@ -88,7 +91,9 @@ export class Panel {
     let extra = '';
     if (mine) extra = BUILDINGS.map((bd) => (g.canBuild(pid, cell, bd.id).ok ? 1 : 0)).join('');
     else extra = g.canReach(pid, xid) ? 'R' : 'r';
-    if (!mine && !X.neutral) extra += ['peace', 'alliance', 'nap', 'surrender'].map((t) => (g.coolLeft(pid, xid, t) ? 1 : 0)).join('') + (Math.round(g.rel(pid, xid) / 10));
+    if (!mine && !X.neutral) extra += ['peace', 'alliance', 'nap', 'surrender', 'trade', 'spy'].map((t) => (g.coolLeft(pid, xid, t) ? 1 : 0)).join('') + (Math.round(g.rel(pid, xid) / 10)) + (trading(g, pid, xid) ? 'T' : 't') + overlordOf(g, xid) + X.gov + (P.nukes || 0);
+    extra += climateAt(g, cell) || '';
+    if (mine) extra += P.gov + (P.job ? P.job.wid : '');
     if (mine) extra += this.app.auto.gov ? 'G' : 'g';
     const offs = g.offensives.filter((o) => (o.a === pid && (mine || o.d === xid)) || (o.d === pid && (mine || o.a === xid))).map((o) => o.id).join(',');
     const sig = [cell, xid, flags, b.join(''), P.techs.size, extra, offs, g.over || ''].join('|');
@@ -111,7 +116,10 @@ export class Panel {
       else if (g.allied(pid, xid)) tags.push('<span class="tag ally">Allié</span>');
       else if (g.inTruce(pid, xid)) tags.push('<span class="tag truce">Trêve</span>');
       else tags.push('<span class="tag">En paix</span>');
-      const allies = g.alliesOf(xid).map((id) => g.countries[id].name);
+      const ov = overlordOf(g, xid);
+      if (ov >= 0) tags.push(`<span class="tag">⛓️ vassal ${ov === pid ? '(le vôtre)' : esc(de(g.countries[ov]))}</span>`);
+      if (trading(g, pid, xid)) tags.push('<span class="tag ally">🚢 commerce</span>');
+      const allies = g.alliesOf(xid).filter((id) => overlordOf(g, xid) !== id).map((id) => g.countries[id].name);
       if (allies.length) tags.push(`<span class="tag ally" title="Alliés">🤝 ${esc(allies.slice(0, 2).join(', '))}${allies.length > 2 ? '…' : ''}</span>`);
     }
     const core = g.coreName[cell];
@@ -135,6 +143,7 @@ export class Panel {
           <div><span>Relief</span><b>×${fmt1(cl.def)}</b></div>
         </div>
         ${blds ? `<div>${blds}</div>` : ''}
+        ${this.cellExtras(g, cell)}
       </div>`;
     if (!X.neutral) {
       h += `
@@ -145,6 +154,7 @@ export class Panel {
           <div><span>Armée</span><b data-k="x-army"></b></div>
           <div><span>Territoires</span><b data-k="x-cells"></b></div>
           <div><span>Époque</span><b>${ERAS[X.era].name}</b></div>
+          <div><span>Régime</span><b>${(GOV_BY_ID[X.gov] || GOV_BY_ID.tribe).icon} ${(GOV_BY_ID[X.gov] || GOV_BY_ID.tribe).name}</b></div>
           <div><span>Moral</span><b data-k="x-morale"></b></div>
           <div><span>${mine ? 'Revenu' : 'Puissance'}</span><b data-k="${mine ? 'x-income' : 'x-power'}"></b></div>
         </div>
@@ -152,6 +162,17 @@ export class Panel {
     }
     if (mine) h += this.buildOwn(g, cell, P);
     return h;
+  }
+
+  // ressource, merveille et climat du territoire
+  cellExtras(g, cell) {
+    const out = [];
+    const r = g.res[cell];
+    if (r >= 0) { const R = RESOURCES[r]; out.push(`<span class="tag" title="${esc(R.desc)}">${R.icon} ${R.name}</span>`); }
+    for (const w of WONDERS) if (g.wonders[w.id] && g.wonders[w.id].cell === cell) out.push(`<span class="tag ally" title="${esc(w.desc)}">${w.icon} ${w.name}</span>`);
+    const cl = climateAt(g, cell);
+    if (cl) out.push(`<span class="tag war" title="Offensives ralenties ici">${cl === 'winter' ? '❄️ Hiver' : '🌧️ Mousson'}</span>`);
+    return out.length ? `<div style="margin-top:4px">${out.join('')}</div>` : '';
   }
 
   buildOwn(g, cell, P) {
@@ -170,6 +191,11 @@ export class Panel {
       </div>`;
     });
     h += `</div></div>`;
+    const G = GOV_BY_ID[P.gov] || GOV_BY_ID.tribe;
+    h += `<div class="p-sec"><h4>Empire</h4><div class="actions">
+      <button class="btn" data-act="empire">🏛️ ${G.icon} ${G.name}${P.job ? ' · 🏗️ chantier en cours' : ''} — gouvernement, merveilles, ressources…</button>
+      ${vassalsOf(g, pid).length ? `<p class="hint">⛓️ ${vassalsOf(g, pid).length} vassal(aux) · 🚢 ${tradesOf(g, pid).length} accord(s) commercial(aux)</p>` : ''}
+    </div></div>`;
     h += `<div class="p-sec"><h4>Armée</h4>
       <div class="actions">
         <button class="btn" data-act="merc">🪙 Recruter des mercenaires <span class="hint" data-k="merc-txt"></span></button>
@@ -221,15 +247,30 @@ export class Panel {
         const left = g.coolLeft(pid, xid, type);
         return `<button class="btn ${cls}" data-act="${act}" ${left ? 'disabled' : ''}>${label}${left ? ` <small>(${left} s)</small>` : ''}</button>`;
       };
+      const vassal = overlordOf(g, xid) === pid;
       if (atWar) {
-        h += btn('peace', 'peace', '🕊️ Proposer la paix') + btn('surrender', 'surrender', '🏳️ Exiger la reddition');
+        h += btn('peace', 'peace', '🕊️ Proposer la paix') + btn('surrender', 'surrender', '🏳️ Exiger l’annexion')
+          + btn('surrender', 'vassal', '⛓️ Exiger la vassalité');
+      } else if (vassal) {
+        h += `<button class="btn" data-act="empire" data-tab="rel">⛓️ Gérer ce vassal</button>`;
       } else if (allied) {
         h += `<button class="btn danger" data-act="break">💔 Rompre l'alliance</button>`;
       } else {
         h += btn('alliance', 'alliance', '🤝 Proposer une alliance');
         if (!truce) h += btn('nap', 'nap', '📜 Pacte de non-agression');
       }
+      if (!atWar) {
+        if (trading(g, pid, xid)) h += `<button class="btn" data-act="breakTrade">📦 Rompre l’accord commercial</button>`;
+        else h += btn('trade', 'trade', `🚢 Accord commercial <small>(${tradesOf(g, pid).length}/${maxTrades(P)})</small>`);
+      }
       h += `</div>`;
+      // espionnage
+      const sl = g.coolLeft(pid, xid, 'spy');
+      h += `<details class="spy"><summary>🕵️ Espionnage${sl ? ` <small>(${sl} s)</small>` : ''}</summary><div class="two">${Object.entries(SPY).map(([k, a]) =>
+        `<button class="btn small" data-act="spy" data-s="${k}" title="${esc(a.desc)}" ${sl ? 'disabled' : ''}>${a.icon} ${a.name} <small>💰 ${spyCost(P, k)}</small></button>`).join('')}</div>
+        <p class="hint">Réussite plus probable si vous êtes plus avancés. Un espion démasqué provoque un incident diplomatique.</p></details>`;
+      // frappe atomique
+      if (atWar && P.nukes > 0) h += `<button class="btn danger" style="width:100%;margin-top:6px" data-act="nuke">☢️ Frappe atomique sur ce territoire (${P.nukes} en stock)</button>`;
     }
     h += `</div>${this.offList(g, (o) => (o.a === pid && o.d === xid) || (o.a === xid && o.d === pid))}</div>`;
     return h;
@@ -243,7 +284,7 @@ export class Panel {
       const mine = o.a === pid;
       const other = g.countries[mine ? o.d : o.a];
       return `<div class="off">
-        <span>${mine ? '⚔️ Offensive contre' : '🛡️ Attaque de'} <b>${esc(art(other))}</b> — <b data-off="${o.id}"></b></span>
+        <span>${mine ? '⚔️ Offensive contre' : '🛡️ Attaque de'} <b>${esc(art(other))}</b> — <b data-off="${o.id}"></b>${generalOf(g, o) ? ` <small>🎖️ ${esc(generalOf(g, o).name)} ${'★'.repeat(generalOf(g, o).lvl)}</small>` : ''}</span>
         ${mine ? `<button class="btn small" data-act="recall" data-o="${o.id}">Rappeler</button>` : '<span></span>'}
         <div class="pb"><div data-offp="${o.id}"></div></div>
       </div>`;
@@ -332,6 +373,25 @@ export class Panel {
         if (!r.pending) toast(esc(r.msg), r.ok ? 'ok' : 'err', 3500);
         break;
       case 'break': app.cmd('breakAlliance', xid); break;
+      case 'vassal':
+        r = app.cmd('surrender', xid, 'vassal');
+        if (!r.pending) toast(esc(r.msg), r.ok ? 'ok' : 'err', 3500);
+        break;
+      case 'trade':
+        r = app.cmd('trade', xid);
+        if (!r.pending) toast(esc(r.msg), r.ok ? 'ok' : 'err', 3500);
+        break;
+      case 'breakTrade': app.cmd('breakTrade', xid); break;
+      case 'spy':
+        r = app.cmd('spy', xid, btn.dataset.s);
+        if (!r.pending) toast('🕵️ ' + esc(r.msg), r.ok ? 'ok' : 'err', 3500);
+        break;
+      case 'nuke':
+        if (!btn.dataset.sure) { btn.dataset.sure = '1'; btn.textContent = '☢️ Confirmer la frappe ? (le monde vous en voudra)'; return; }
+        r = app.cmd('nuke', cell);
+        if (!r.pending && !r.ok) toast(esc(r.msg), 'err');
+        break;
+      case 'empire': app.openEmpire(btn.dataset.tab); return;
       case 'goals': app.openGoals(); return;
       case 'pct': this.setPct(+btn.dataset.v); app.sound.click(); return;
       case 'gov':

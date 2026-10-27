@@ -3,6 +3,8 @@
 import { TECHS, canResearch } from '../tech/techtree.js';
 import { Art } from '../core/fr.js';
 import { fmtBig } from '../core/util.js';
+import { GOVS, WONDERS, canWonder, canGov, hasRes } from './empire.js';
+import { vassalsOf, canIntegrate } from './statecraft.js';
 
 export function advise(g, id) {
   const P = g.countries[id];
@@ -60,5 +62,15 @@ export function advise(g, id) {
       break;
     }
   }
+  // gouvernement, merveilles, ressources, vassaux, généraux
+  if (P.gov === 'tribe' && g.t > 45) add('gov', 75, '🏛️ Choisissez un gouvernement (bouton 🏛️ ou touche E) : le premier choix est gratuit et chacun a ses atouts.');
+  else if (GOVS.some((x) => x.era === P.era && P.era > 0 && canGov(g, id, x.id).ok) && (GOVS.find((x) => x.id === P.gov) || {}).era < P.era) add('govnew', 35, '🏛️ De nouveaux régimes sont disponibles à votre époque (bouton 🏛️).');
+  if (!P.job) {
+    const w = WONDERS.find((x) => canWonder(g, id, x.id).ok && P.gold > x.cost * 1.3);
+    if (w) add('wonder', 58, `${w.icon} Vous pouvez bâtir la merveille « ${w.name} » (${w.desc.toLowerCase()}) avant les autres : bouton 🏛️ → Merveilles.`);
+  }
+  if ((P.techs.has('tanks') || P.techs.has('aviation')) && !hasRes(P, 'oil')) add('oil', 72, '🛢️ Sans pétrole, vos Blindés et votre Aviation ne donnent que la moitié de leur effet : conquérez un territoire marqué 🛢️.');
+  if (vassalsOf(g, id).some((x) => canIntegrate(g, id, x).ok)) add('integrate', 42, '⛓️ Un de vos vassaux peut être intégré pacifiquement (bouton 🏛️ → Relations).');
+  if ((P.generals || []).some((x) => !x.off) && g.offensives.some((o) => o.a === id && !o.gen)) add('general', 52, '🎖️ Un général attend en réserve alors qu’une offensive n’a pas de chef : affectez-le (🏛️ → Armée).');
   return out.sort((a, b) => b.prio - a.prio);
 }

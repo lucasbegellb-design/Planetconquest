@@ -1,5 +1,6 @@
 // Rendu canvas : carte raster (1 drawImage / copie), animations de conquête pixel par pixel,
 // flèches d'offensive, explosions sur les fronts, étiquettes des pays, mini-carte.
+import { RESOURCES, WONDERS } from '../sim/empire.js';
 import { MapPainter } from './paint.js';
 import { Camera } from './camera.js';
 import { wrapDx, clamp, rgbToCss, fmtBig, mixRgb } from '../core/util.js';
@@ -63,6 +64,10 @@ export class Renderer {
     p.isNeutral = (o) => game.countries[o].neutral;
     p.playerId = game.playerId;
     game.on('capture', (e) => this.onCapture(e));
+    game.on('nuke', (e) => {
+      const c = this.map.cells[e.cell];
+      for (let k = 0; k < 4; k++) this.rings.push({ x: c.ax, y: c.ay, color: k % 2 ? [255, 255, 220] : [255, 140, 40], age: 0, life: 1.6 + k * 0.5, r: 18 + k * 12 });
+    });
     game.on('disaster', (e) => {
       const c = this.map.cells[e.cell];
       this.rings.push({ x: c.ax, y: c.ay, color: [255, 120, 60], age: 0, life: 1.6, r: 10 });
@@ -533,6 +538,23 @@ export class Renderer {
       if (g.cellsOf[c.id].size < 2 && s < 1.2) continue;
       const cl = cells[c.capital];
       drawStar(ctx, cl.ax * s, cl.ay * s, size, c.isPlayer ? '#fff6c8' : 'rgba(255,255,255,0.85)', 'rgba(0,0,0,0.6)');
+    }
+    // merveilles (toujours) et ressources (de près)
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (g.wonders) {
+      ctx.font = `${Math.round(clamp(9 * Math.sqrt(s), 11, 22))}px system-ui, sans-serif`;
+      for (const w of WONDERS) { const st = g.wonders[w.id]; if (st) { const cl = cells[st.cell]; ctx.fillText(w.icon, cl.ax * s + size * 2.2, cl.ay * s - size * 1.5); } }
+    }
+    if (s >= 1.1 && g.res) {
+      ctx.globalAlpha = 0.9;
+      ctx.font = `${Math.round(clamp(6 * Math.sqrt(s), 9, 16))}px system-ui, sans-serif`;
+      for (let i = 0; i < g.res.length; i++) {
+        const r = g.res[i];
+        if (r < 0) continue;
+        const cl = cells[i];
+        ctx.fillText(RESOURCES[r].icon, cl.ax * s, cl.ay * s + size * 2.4);
+      }
+      ctx.globalAlpha = 1;
     }
   }
 

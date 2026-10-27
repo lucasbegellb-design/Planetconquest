@@ -27,6 +27,7 @@ import { Multi } from './net/multiplayer.js';
 import { mapHash } from './net/mapsync.js';
 import { runCommand } from './sim/commands.js';
 import { Advisor } from './ui/advisor.js';
+import { openEmpireView, bindEmpireChange } from './ui/empireView.js';
 
 class App {
   constructor() {
@@ -59,6 +60,7 @@ class App {
     this.space = new SpaceView(this);
     this.replay = new Replay(this);
     this.advisor = new Advisor(this);
+    bindEmpireChange(this);
     this.multi = new Multi(this);
     $('#btn-multi').addEventListener('click', () => this.mpOpen());
     $('#btn-emote').addEventListener('click', () => this.multi.openEmotes());
@@ -185,6 +187,7 @@ class App {
     if (e.key === ' ') { e.preventDefault(); this.setSpeed(this.speed > 0 ? 0 : this.prevSpeed || 1); }
     else if (e.key >= '1' && e.key <= '4') this.setSpeed([1, 2, 4, 4][+e.key - 1]);
     else if (e.key === 't' || e.key === 'T') this.openTech();
+    else if (e.key === 'e' || e.key === 'E') this.openEmpire();
     else if (e.key === 'f' || e.key === 'F') this.focusPlayer(false);
     else if (e.key === 'l' || e.key === 'L') this.renderer.showLabels = !this.renderer.showLabels;
   }
@@ -493,6 +496,7 @@ class App {
 
   // ---------- fenêtres ----------
   openTech() { if (this.game) openTechView(this); }
+  openEmpire(tab) { if (this.game) openEmpireView(this, tab); }
 
   openGoals() {
     const g = this.game;

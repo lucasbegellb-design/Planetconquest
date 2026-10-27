@@ -37,6 +37,17 @@ Jeu de stratégie en temps réel, jouable dans le navigateur, inspiré des vidé
 - **Trois arbres technologiques** — ⚔️ Militaire, 💰 Économie, 👥 Population — sur 5 époques : Antiquité → Médiéval → Industriel → Moderne → Spatial. Une technologie exige une technologie de la même branche à l'époque précédente ; 4 technologies d'une époque (toutes branches confondues) débloquent la suivante. Chaque époque multiplie l'efficacité des soldats et change le style des unités et de l'interface. Une fois à l'ère spatiale, des **technologies infinies** restent disponibles.
 - L'or en excès peut servir à recruter des **mercenaires**.
 
+### 🏛️ Empire (bouton 🏛️ ou touche E)
+- **Gouvernements** : Chefferie, Monarchie, République, Théocratie, Dictature, Communisme, Démocratie, Technocratie, débloqués selon l'époque. Chacun a ses forces et ses faiblesses (or, recherche, soldats, attaque, moral, confiance des voisins). Changer impose 30 s de transition et 3 min d'attente ; le premier choix est gratuit.
+- **Merveilles** : Pyramides, Grande Muraille, Bibliothèque d'Alexandrie, Machu Picchu, Cité interdite, Statue de la Liberté, Tour Eiffel, Projet Manhattan, Internet, Ascenseur spatial. Une seule par planète : course contre l'IA (les perdants récupèrent la moitié de leur or). Bâtie dans la capitale, elle change de mains avec son territoire.
+- **Ressources stratégiques** (🐎 chevaux, ⛓️ fer, 💎 pierres précieuses, 🛢️ pétrole, ☢️ uranium) dans certains territoires : en contrôler une donne son bonus. Sans pétrole, Blindés et Aviation ne fonctionnent qu'à moitié ; l'uranium (ou le Projet Manhattan) permet la bombe atomique.
+- **Généraux** : nés de vos victoires (3 au plus), ils mènent une offensive (+attaque, +vitesse), gagnent des étoiles… et peuvent tomber au combat.
+- **Vassaux** : exigez la reddition d'un ennemi en choisissant « vassalité » : il garde ses terres, verse 25 % de ses revenus et combat à vos côtés, mais peut se révolter. Intégration pacifique possible après 3 min.
+- **Commerce** : accords commerciaux avec les pays en paix (+6 % d'or chacun, relations en hausse ; 2 + époque accords au plus). La guerre les rompt.
+- **Espionnage** : saboter, voler une technologie, fomenter des troubles. Un espion démasqué provoque un incident diplomatique.
+- **Arme atomique** (ère moderne) : dévaste un territoire ennemi… et retourne le monde entier contre vous.
+- **Saisons et crises** : l'hiver ralentit les offensives aux hautes latitudes, la mousson dans les tropiques ; crises mondiales (pandémie, krach, petit âge glaciaire, renaissance) qui touchent tout le monde.
+
 ### 👥 Multijoueur (sans serveur)
 - Accueil → **Multijoueur** → **Créer** : la carte et les réglages de l'accueil sont utilisés ; choisissez la durée (10 à 45 min) et le mode. Partagez le **code** (ou le lien d'invitation) ; jusqu'à 6 joueurs.
 - Modes **chacun pour soi** ou **2 équipes** (🔵 Bleus / 🔴 Rouges, choisies dans le salon) : les coéquipiers sont alliés pour toute la partie et additionnent leurs scores. L'IA joue tous les autres pays.
@@ -127,6 +138,9 @@ js/
     events.js           événements aléatoires
     balance.js          constantes d'équilibrage et niveaux de difficulté
     governor.js         gouverneur automatique, recherche automatique, « construire partout »
+    empire.js           ressources, merveilles, gouvernements (modificateurs de pays)
+    military.js         généraux, arme atomique, saisons, crises mondiales
+    statecraft.js       vassaux, accords commerciaux, espionnage
     match.js            partie chronométrée : équipes, objectifs, score
     advisor.js          conseiller (astuces selon la situation)
     commands.js         actions d'un joueur (exécutées localement ou par l'hôte en multijoueur)
@@ -167,7 +181,7 @@ Mesuré avec le joueur automatique (`tests/bot.mjs`), difficulté Normale, temps
 | Planètes de niveau 1 à 3 | conquises en 7 à 32 min |
 | Planètes de niveau 4 à 8 (technologies infinies accumulées) | 10 à 18 min, environ une défaite sur quatre |
 
-Difficultés (Terre, France, joueur automatique de conquête sur 3 graines) : **Facile** 22–29 min, **Normale** 29–35 min, **Difficile** souvent au-delà de 40 min, **Impossible** : l'empire survit mais progresse lentement. Un joueur pacifique (`tests/passive.mjs`) n'est pas attaqué pendant 20 min en Facile/Normale ; en Difficile la première guerre arrive vers 15 min.
+Difficultés (Terre, France, joueur automatique de conquête utilisant gouvernements et merveilles, 6 graines) : **Facile** 17–29 min (souvent ≈ 19), **Normale** 20–27 min (une partie sur six dépasse 45 min), **Difficile** 22–30 min ou plus de 45 min une fois sur deux, **Impossible** : défaite fréquente entre 7 et 18 min. Un joueur pacifique (`tests/passive.mjs`) n'est pas attaqué pendant 20 min en Facile/Normale ; en Difficile la première guerre arrive vers 15 min.
 
 Un joueur humain, moins systématique que le bot, met typiquement 25 à 40 minutes pour conquérir la Terre. Toutes les constantes sont regroupées dans `js/sim/balance.js` et `js/space/progression.js`.
 

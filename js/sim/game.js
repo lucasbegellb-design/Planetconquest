@@ -9,6 +9,9 @@ import { wrapDx, clamp } from '../core/util.js';
 import { aiTick, aiResearch, evalPeace, evalAlliance, evalNap, evalSurrender } from './ai.js';
 import { eventsTick } from './events.js';
 import { governorTick, autoResearchTick } from './governor.js';
+import { NR, placeResources, structMods, empireTick, wonderCaptured, GOV_BY_ID } from './empire.js';
+import { assignGeneral, generalEnd, generalOf, genBonus, militaryCapture, militaryTick, climateF } from './military.js';
+import { statecraftTick, vassalize, vassalsOf, isVassalPair, trading, breakTrade, tradeCounts, makeTrade } from './statecraft.js';
 import { matchTick, matchCapital, finalAwards, matchDecided, sameTeam, bonusOf } from './match.js';
 
 export const pairKey = (a, b) => (a < b ? a * 4096 + b : b * 4096 + a);
@@ -54,6 +57,11 @@ export class Game {
     // historique des frontières pour le timelapse : état initial + changements groupés
     this.hist = { init: null, frames: [], pend: [], next: 0 };
     this.dipCool = new Map();
+    this.res = new Int8Array(n).fill(-1); // ressource stratégique de chaque territoire (-1 : aucune)
+    this.wonders = {};                    // merveille -> { cell, t }
+    this.vassals = new Map();             // vassal -> suzerain
+    this.trades = new Set();              // paires en accord commercial
+    this.crisis = null;                   // crise mondiale en cours { id, until }
     for (let i = 0; i < n; i++) { this.base[i] = map.cells[i].basePop; this.pop[i] = map.cells[i].basePop; }
     // nom du pays « historique » de chaque territoire (null = terres libres)
     this.coreName = map.cells.map((c) => (c.initOwner >= 0 && map.countries0[c.initOwner] ? map.countries0[c.initOwner].name : null));
@@ -100,7 +108,7 @@ export class Game {
       neutral: !!src.neutral, isPlayer: false, alive: true, capital: src.capital ?? -1,
       army: 0, gold: 0, morale: 60, rp: 0, techs: new Set(), repeat: {}, era: 0,
       mods: techMods(new Set()), perk: emptyMods(), temp: [], tmod: emptyMods(),
-      peakCells: 0, losses: 0,
+      peakCells: 0, losses: 0, gov: 'tribe', job: null, resN: null, generals: [], nukes: 0,
       ai: { aggr: 1, style: 'expansionniste', next: 1 + r.next() * 5, cool: 0, loyal: r.next() },
       st: { pop: 0, ncells: 0, income: 0, upkeep: 0, armyCap: 0, recruit: 0, rp: 0, prod: 0, bankrupt: false },
     };
@@ -160,6 +168,7 @@ export class Game {
       c.peakCells = c.st.ncells;
     }
     if (P && opts.landing != null) this._expedition(P, opts.meta || {});
+    placeResources(this);
     this.hist.init = Array.from(this.owner);
   }
 
@@ -244,8 +253,9 @@ export class Game {
     const C = this.countries.length, n = this.nCells, map = this.map;
     const aPop = new Float64Array(C), aW = new Float64Array(C), aSci = new Float64Array(C), aUni = new Float64Array(C);
     const aProd = new Float64Array(C), aBar = new Float64Array(C), aN = new Float64Array(C), aFac = new Float64Array(C);
-    const aMan = new Float64Array(C);
-    for (const c of this.countries) this._tempMods(c);
+    const aMan = new Float64Array(C), aRes = new Uint16Array(C * NR);
+    this.tradeN = tradeCounts(this);
+    for (const c of this.countries) { this._tempMods(c); if (!c.neutral && c.alive) this._refreshMods(c); }
     const growthPlanet = this.planet.rules.growth || 1;
     for (let i = 0; i < n; i++) {
       const o = this.owner[i], c = this.countries[o], cell = map.cells[i], b = i * NB;
@@ -268,11 +278,13 @@ export class Game {
       aUni[o] += uni;
       aProd[o] += p * dev * (1 + 0.5 * fac) * ur;
       aBar[o] += bar; aFac[o] += fac;
+      if (this.res[i] >= 0) aRes[o * NR + this.res[i]]++;
     }
     for (const c of this.countries) {
       const id = c.id, st = c.st;
       st.pop = aPop[id]; st.ncells = aN[id];
       if (c.neutral || !c.alive) continue;
+      c.resN = Array.from(aRes.subarray(id * NR, id * NR + NR));
       const P = Math.max(0.01, aPop[id]), f = Math.pow(P, -0.2), fr = Math.pow(P, -0.4);
       const ai = !c.isPlayer, boost = ai ? this.planet.aiBonus || 1 : 1;
       const mf = 0.7 + (0.6 * c.morale) / 100;
@@ -293,7 +305,8 @@ export class Game {
       else c.army -= (c.army - st.armyCap) * 0.1 * dt;
       c.rp += st.rp * dt;
       const wars = this.warCount(id);
-      const target = 64 + (wars === 0 ? 10 : -5 * Math.min(3, wars)) - (st.bankrupt ? 25 : 0) + c.tmod.morale;
+      const weary = (GOV_BY_ID[c.gov] || {}).weary ? 4 * Math.min(3, wars) : 0;
+      const target = 64 + (wars === 0 ? 10 : -5 * Math.min(3, wars)) - weary - (st.bankrupt ? 25 : 0) + c.tmod.morale + (c.mods.morale || 0);
       c.morale = clamp(c.morale + (target - c.morale) * 0.012 * dt, 5, 100);
       if (aN[id] > c.peakCells) c.peakCells = aN[id];
       if (ai) aiResearch(this, c);
@@ -354,8 +367,13 @@ export class Game {
   }
 
   // ---------- technologies ----------
-  _refreshTech(c, silent = false) {
+  // technologies + gouvernement, merveilles, ressources
+  _refreshMods(c) {
     c.mods = techMods(c.techs, c.repeat);
+    structMods(this, c);
+  }
+  _refreshTech(c, silent = false) {
+    this._refreshMods(c);
     const era = eraOf(c.techs);
     if (era > c.era) {
       c.era = era;
@@ -460,6 +478,8 @@ export class Game {
   declareWar(a, b) {
     const A = this.countries[a], B = this.countries[b];
     if (B.neutral || this.atWar(a, b)) return;
+    if (trading(this, a, b)) breakTrade(this, a, b, ' (déclaration de guerre)');
+    if (this.vassals.get(a) === b) this.vassals.delete(a); // guerre d'indépendance
     if (this.allied(a, b)) {
       this.alliances.delete(pairKey(a, b));
       this.say(`🗡️ Trahison : ${Art(A)} ${v(A, 'rompt', 'rompent')} l'alliance et ${v(A, 'attaque', 'attaquent')} ${art(B)} !`, 'war', { player: this.involvesPlayer(a, b), imp: true });
@@ -470,6 +490,7 @@ export class Game {
     if (this.involvesPlayer(a, b) || this.isNearPlayer(a) || this.isNearPlayer(b) || (this.notable(a) && this.notable(b))) {
       this.say(`⚔️ ${Art(A)} ${v(A, 'déclare', 'déclarent')} la guerre ${aFr(B)} !`, 'war', { player: this.involvesPlayer(a, b), imp: this.involvesPlayer(a, b) });
     }
+    for (const vas of vassalsOf(this, a)) if (vas !== b && !this.allied(vas, b)) this._setWar(vas, b);
     for (const ally of this.alliesOf(b)) {
       if (ally === a || this.allied(ally, a) || !this.countries[ally].alive) continue;
       if (this._setWar(ally, a) && (this.involvesPlayer(ally, a) || this.notable(ally))) {
@@ -500,7 +521,7 @@ export class Game {
     this.emit('alliance', { a, b });
   }
   breakAlliance(a, b) {
-    if (!this.allied(a, b) || sameTeam(this, a, b)) return;
+    if (!this.allied(a, b) || sameTeam(this, a, b) || isVassalPair(this, a, b)) return;
     this.alliances.delete(pairKey(a, b));
     this.addRel(a, b, -40);
     this.say(`💔 ${Art(this.countries[a])} ${v(this.countries[a], 'rompt son', 'rompent leur')} alliance avec ${art(this.countries[b])}.`, 'alliance', { player: this.involvesPlayer(a, b) });
@@ -585,8 +606,9 @@ export class Game {
       if (target >= 0) ex.target = target;
       return { ok: true, off: ex, merged: true };
     }
-    const o = { id: this.nextOffId++, a, d, troops, initial: troops, target, cur: front.cur, src: front.src, naval: front.naval, len: front.len, progress: 0, fight: 0, t0: this.t, captured: 0 };
+    const o = { id: this.nextOffId++, a, d, troops, initial: troops, target, cur: front.cur, src: front.src, naval: front.naval, len: front.len, progress: 0, fight: 0, t0: this.t, captured: 0, gen: 0 };
     this.offensives.push(o);
+    assignGeneral(this, o);
     this.emit('offensive', o);
     return { ok: true, off: o };
   }
@@ -598,6 +620,7 @@ export class Game {
     const i = this.offensives.indexOf(o);
     if (i < 0) return;
     this.offensives.splice(i, 1);
+    generalEnd(this, o, reason);
     const A = this.countries[o.a];
     if (A.alive) A.army += Math.max(0, o.troops) * (reason === 'recall' ? 0.9 : 1);
     if (A.isPlayer && (reason === 'exhausted' || reason === 'nofront') && o.captured === 0) {
@@ -621,12 +644,13 @@ export class Game {
         o.progress = Math.min(o.progress, 0.25);
       }
       const cell = o.cur, cd = cells[cell];
-      const qa = this.atkQ(A) * (o.naval ? this.navalMult(A, o) : 1);
+      const gb = genBonus(generalOf(this, o)), cl = climateF(this, cell);
+      const qa = this.atkQ(A) * (o.naval ? this.navalMult(A, o) : 1) * (1 + gb.atk) * cl.atk;
       const { dArmy, dTroops, qd } = this.defenseAt(D, cell, o.troops, load.get(o.d) || 0);
       const sA = o.troops * qa, sD = dTroops * qd;
       const r = sA / Math.max(1, sD);
       const f = (1.7 * r * r) / (0.7 + r * r);
-      const spd = BAL.CAPTURE_SPEED * (1 + A.mods.speed + A.perk.speed + A.tmod.speed) * (rules.speed || 1) * (o.naval ? 0.75 : 1);
+      const spd = BAL.CAPTURE_SPEED * (1 + A.mods.speed + A.perk.speed + A.tmod.speed + gb.speed) * cl.speed * (rules.speed || 1) * (o.naval ? 0.75 : 1);
       const size = Math.pow(cd.n / 900, 0.25);
       o.progress += (dt * spd * f) / Math.max(0.6, size);
       const killA = (BAL.KILL * sD * dt) / Math.sqrt(qa);
@@ -672,6 +696,8 @@ export class Game {
       for (const c of this.cellsOf[a]) if (c !== cell && this.build[c * NB + BI.spaceport]) { this.build[cell * NB + BI.spaceport] = 0; break; }
     }
     A.morale = Math.min(100, A.morale + 0.4);
+    wonderCaptured(this, cell, a, d);
+    militaryCapture(this, a, d);
     if (!D.neutral) D.morale = Math.max(5, D.morale - 0.8);
     this.hist.pend.push(cell, a);
     this.emit('capture', { cell, from: d, to: a, src, delay });
@@ -702,7 +728,9 @@ export class Game {
 
   eliminate(d, by) {
     const D = this.countries[d], A = this.countries[by];
-    D.alive = false; D.army = 0;
+    D.alive = false; D.army = 0; D.job = null;
+    for (const [vs, ov] of [...this.vassals]) if (vs === d || ov === d) this.vassals.delete(vs);
+    for (const k of [...this.trades]) if (Math.floor(k / 4096) === d || k % 4096 === d) this.trades.delete(k);
     for (const o of [...this.offensives]) {
       if (o.a === d) { o.troops = 0; this.endOffensive(o, 'gone'); }
       else if (o.d === d) this.endOffensive(o, 'victory');
@@ -720,7 +748,9 @@ export class Game {
     if (this.match && this.match.names && matchDecided(this)) this.endMatch('survivant');
   }
 
-  surrender(loser, winner) {
+  // mode : 'annex' (annexion de tous les territoires) ou 'vassal'
+  surrender(loser, winner, mode = 'annex') {
+    if (mode === 'vassal') { vassalize(this, loser, winner); return; }
     const L = this.countries[loser], Wn = this.countries[winner];
     this.say(`🏳️ ${Art(L)} ${v(L, 'capitule', 'capitulent')} face ${aFr(Wn)} !`, 'annex', { player: this.involvesPlayer(loser, winner), imp: true });
     const cells = [...this.cellsOf[loser]];
@@ -753,6 +783,7 @@ export class Game {
     if (p.type === 'peace') this.makePeace(p.from, by);
     else if (p.type === 'alliance') this.makeAlliance(p.from, by);
     else if (p.type === 'nap') this.makeNap(p.from, by);
+    else if (p.type === 'trade' && !this.atWar(p.from, by)) makeTrade(this, p.from, by);
   }
 
   // ---------- délais entre demandes diplomatiques ----------
@@ -801,9 +832,9 @@ export class Game {
     return this._ask(from, target, 'nap', () => (this.atWar(from, target) ? 'Faites d’abord la paix' : this.allied(from, target) ? 'Vous êtes déjà alliés' : this.inTruce(from, target) ? 'Un pacte ou une trêve est déjà en cours' : null),
       evalNap, 90, () => this.makeNap(from, target), 'Pacte de non-agression signé (5 min)', ['refuse le pacte', 'refusent le pacte']);
   }
-  demandSurrender(from, target) {
+  demandSurrender(from, target, mode = 'annex') {
     return this._ask(from, target, 'surrender', () => (!this.atWar(from, target) ? 'Vous n’êtes pas en guerre' : null),
-      evalSurrender, 60, () => this.surrender(target, from), 'Reddition acceptée !', ['refuse de capituler', 'refusent de capituler']);
+      evalSurrender, 60, () => this.surrender(target, from, mode), mode === 'vassal' ? 'Reddition acceptée : nouveau vassal !' : 'Reddition acceptée !', ['refuse de capituler', 'refusent de capituler']);
   }
   // compatibilité (bot de test, ancienne interface)
   playerProposePeace(t) { return this.proposePeace(this.playerId, t); }
@@ -861,6 +892,9 @@ export class Game {
     }
     aiTick(this, dt);
     eventsTick(this, dt);
+    empireTick(this, dt);
+    militaryTick(this, dt);
+    statecraftTick(this, dt);
     if (this.t >= this.hist.next) this.flushHist();
     // automatismes des joueurs humains (gouverneur, recherche automatique)
     this.autoAcc = (this.autoAcc || 0) + dt;
@@ -921,6 +955,8 @@ export class Game {
   serialize() {
     return {
       v: 1, t: this.t, playerId: this.playerId, conquered: this.conquered, over: this.over, match: this.match,
+      res: Array.from(this.res), wonders: this.wonders, vassals: [...this.vassals], trades: [...this.trades],
+      crisis: this.crisis, nextCrisis: this.nextCrisis, season: this.season, lastNuke: this.lastNuke,
       rocket: this.rocket, nextEvent: this.nextEvent, eraFirsts: this.eraFirsts, rng: this.rng.s,
       nextOffId: this.nextOffId, nextPropId: this.nextPropId,
       owner: Array.from(this.owner),
@@ -933,6 +969,8 @@ export class Game {
         alive: c.alive, capital: c.capital, army: Math.round(c.army), gold: Math.round(c.gold * 10) / 10,
         morale: Math.round(c.morale * 10) / 10, rp: Math.round(c.rp * 10) / 10, techs: [...c.techs], repeat: c.repeat,
         perk: c.perk, temp: c.temp, peakCells: c.peakCells, losses: Math.round(c.losses), ai: c.ai, auto: c.auto,
+        gov: c.gov, govT: c.govT, govT0: c.govT0, job: c.job,
+        generals: c.generals, nukes: c.nukes, nuked: c.nuked, feats: c.feats, genSeq: c.genSeq, vassalT: c.vassalT,
       })),
       offensives: this.offensives.map((o) => ({ ...o })),
       wars: [...this.wars.values()],
@@ -950,12 +988,19 @@ export class Game {
     g.t = s.t; g.playerId = s.playerId; g.match = s.match; g.conquered = s.conquered; g.over = s.over; g.rocket = s.rocket;
     g.nextEvent = s.nextEvent; g.eraFirsts = s.eraFirsts; g.rng.s = s.rng; g.nextOffId = s.nextOffId; g.nextPropId = s.nextPropId;
     g.owner.set(s.owner); g.pop.set(s.pop); g.base.set(s.base); g.build.set(s.build); g.unrest.set(s.unrest);
+    if (s.res) g.res.set(s.res); else placeResources(g); // anciennes sauvegardes
+    g.wonders = s.wonders || {};
+    g.vassals = new Map(s.vassals || []);
+    g.trades = new Set(s.trades || []);
+    g.crisis = s.crisis || null; g.nextCrisis = s.nextCrisis; g.season = s.season; g.lastNuke = s.lastNuke;
     for (const d of s.countries) {
       const c = g._addCountry({ name: d.name, art: d.art, title: d.title, color: d.color, neutral: d.neutral, capital: d.capital });
       Object.assign(c, {
         isPlayer: d.isPlayer, alive: d.alive, army: d.army, gold: d.gold, morale: d.morale, rp: d.rp,
         techs: new Set(d.techs), repeat: d.repeat || {}, perk: { ...emptyMods(), ...d.perk }, temp: d.temp || [],
         peakCells: d.peakCells, losses: d.losses || 0, ai: d.ai, auto: d.auto,
+        gov: d.gov || 'tribe', govT: d.govT, govT0: d.govT0, job: d.job || null,
+        generals: d.generals || [], nukes: d.nukes || 0, nuked: d.nuked, feats: d.feats || 0, genSeq: d.genSeq || 0, vassalT: d.vassalT,
       });
       if (!c.neutral) g._refreshTech(c, true);
     }
